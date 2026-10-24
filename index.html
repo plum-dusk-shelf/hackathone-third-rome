@@ -1,0 +1,2421 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>IDE — Манты Edition</title>
+    <script src="webui.js"></script>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+    <style>
+        :root {
+            --bg-main: #0f0f0f;        
+            --bg-panel: #1a1a1a;       
+            --bg-header: #222222;      
+            --text-main: #e0e0e0;      
+            --text-dim: #777777;       
+            --border: #333333;         
+
+            --manti-dough: #f5e6d3;    
+            --manti-brown: #8b5a2b;    
+            --manti-accent: #d48c4a;   
+            --manti-dark: #3a2c24;     
+
+            --terminal-bg: #0a0807;
+            --sidebar-width: 200px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden;
+                     background: var(--bg-main); color: var(--manti-dough); 
+                     font-family: 'Segoe UI', sans-serif; }
+        
+        #app { display: flex; flex-direction: column; height: 100vh; position: relative; }
+        
+        #toolbar {
+            height: 40px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            gap: 10px;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+
+        .toolbar-btn {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-run {
+            background: rgba(144, 238, 144, 0.2); 
+            color: #90ee90;
+            border: 1px solid #90ee90;
+        }
+        .btn-run:hover {
+            background: rgba(144, 238, 144, 0.4);
+            box-shadow: 0 0 10px rgba(144, 238, 144, 0.3);
+        }
+
+        .btn-debug {
+            background: rgba(173, 216, 230, 0.2); 
+            color: #add8e6;
+            border: 1px solid #add8e6;
+        }
+        .btn-debug:hover {
+            background: rgba(173, 216, 230, 0.4);
+            box-shadow: 0 0 10px rgba(173, 216, 230, 0.3);
+        }
+
+        .debug-actions {
+            display: none;
+            align-items: center;
+            gap: 5px;
+        }
+        .debug-actions button {
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg-header);
+            color: var(--manti-dough);
+            cursor: pointer;
+        }
+        .debug-actions button:hover { border-color: var(--manti-accent); }
+        #variables-toggle {
+            display: none;
+            padding: 5px 10px;
+            border: 1px solid var(--manti-accent);
+            border-radius: 5px;
+            background: transparent;
+            color: var(--manti-dough);
+            cursor: pointer;
+        }
+        #variables-window {
+            position: fixed;
+            top: 50px;
+            right: 12px;
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+            width: min(380px, calc(100vw - 24px));
+            max-height: min(65vh, 520px);
+            background: var(--bg-panel);
+            border: 1px solid var(--manti-accent);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+            color: var(--manti-dough);
+        }
+        #variables-window.visible { display: flex; }
+        .variables-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px;
+            background: var(--bg-header);
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        #variables-close {
+            border: 0;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 18px;
+        }
+        #variables-frames {
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+            padding: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        .variables-frame {
+            flex: 0 0 auto;
+            padding: 4px 7px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-main);
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .variables-frame.active { border-color: var(--manti-accent); color: var(--manti-accent); }
+        #variables-content {
+            overflow: auto;
+            padding: 8px;
+            min-height: 48px;
+            font: 12px/1.5 Consolas, monospace;
+        }
+        .variable-scope { margin-bottom: 9px; }
+        .variable-scope-title { color: var(--manti-accent); font-weight: 700; margin-bottom: 3px; }
+        .variable-row { padding: 2px 4px; border-radius: 3px; overflow-wrap: anywhere; }
+        .variable-row.expandable { cursor: pointer; }
+        .variable-row.expandable:hover { background: var(--bg-header); }
+        .variable-name { color: #add8e6; }
+        .variable-type { color: var(--text-dim); }
+        .variable-value { color: var(--manti-dough); }
+        .variable-children { margin-left: 12px; border-left: 1px solid var(--border); padding-left: 5px; }
+
+        #collapsed-tabs {
+            display: flex;
+            gap: 5px;
+            margin-left: 20px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            flex-grow: 1;
+            align-items: center;
+            height: 100%;
+        }
+
+        .collapsed-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--bg-header);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--manti-dough);
+            cursor: grab;
+            user-select: none;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+        .collapsed-tab:hover {
+            background: var(--manti-dark);
+            border-color: var(--manti-accent);
+        }
+        .collapsed-tab .tab-close {
+            color: var(--text-dim);
+            font-weight: bold;
+            margin-left: 5px;
+            cursor: pointer;
+        }
+        .collapsed-tab .tab-close:hover {
+            color: #f48771;
+        }
+        .collapsed-tab.dragging {
+            opacity: 0.5;
+        }
+
+        #main-area {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        #sidebar {
+            width: var(--sidebar-width); 
+            background: var(--bg-panel); 
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; padding: 10px; flex-shrink: 0;
+            transition: width 0.3s ease, padding 0.3s ease;
+            overflow: hidden;
+        }
+        
+        #sidebar.collapsed { width: 0; padding: 10px 0; border-right: none; }
+
+        .sidebar-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px; min-width: 150px;
+        }
+        .sidebar-header h3 { font-size: 12px; text-transform: uppercase; color: var(--text-dim); margin: 0; letter-spacing: 1px; }
+        
+        #toggle-sidebar-btn {
+            background: transparent; border: none; color: var(--manti-dough);
+            cursor: pointer; font-size: 16px; padding: 0 5px;
+            transition: color 0.2s;
+        }
+        #toggle-sidebar-btn:hover { color: var(--manti-accent); }
+
+        #expand-sidebar-btn {
+            position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+            background: var(--bg-header); color: var(--manti-dough);
+            border: 1px solid var(--border); border-left: none;
+            border-radius: 0 4px 4px 0; padding: 10px 5px;
+            cursor: pointer; z-index: 100; display: none;
+            transition: background 0.2s;
+        }
+        #expand-sidebar-btn:hover { background: var(--manti-accent); color: #000; }
+
+        .sidebar-item {
+            padding: 8px; margin-bottom: 5px; background: var(--bg-header);
+            border-radius: 8px;
+            cursor: grab; user-select: none;
+            border: 1px solid var(--border);
+            color: var(--manti-dough);
+            transition: all 0.2s;
+            min-width: 180px;
+        }
+        .sidebar-item:hover { 
+            background: var(--manti-accent); 
+            border-color: var(--manti-accent); 
+            color: #1a1512; 
+            font-weight: bold; 
+        }
+
+        #workspace {
+            flex: 1; display: flex; flex-direction: column;
+            background: var(--bg-main); overflow: hidden; padding: 2px;
+            min-height: 100px;
+        }
+
+        .row {
+            display: flex; flex-direction: row;
+            flex: 1; min-height: 100px; overflow: hidden;
+        }
+
+        .panel {
+            display: flex; flex-direction: column;
+            border: 1px solid var(--border); margin: 2px;
+            background: var(--bg-panel); flex: 1;
+            min-width: 150px; min-height: 100px;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+        }
+
+        .panel.active-panel {
+            border-color: rgba(245, 230, 211, 0.4);
+            box-shadow: 0 0 10px rgba(245, 230, 211, 0.1);
+        }
+
+        .panel.panel-small {
+            flex: 0.25 1 0%;
+            min-width: 80px;
+        }
+
+        .panel-header {
+            height: 32px; background: var(--bg-header); display: flex; align-items: center;
+            padding: 0 12px; font-size: 12px; border-bottom: 1px solid var(--border);
+            user-select: none; flex-shrink: 0;
+            cursor: grab; color: var(--manti-dough); font-weight: 600;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            transition: background 0.2s;
+            justify-content: space-between;
+        }
+
+        .panel-title {
+            display: flex;
+            align-items: center;
+        }
+
+        .panel-controls {
+            display: flex;
+            gap: 5px;
+        }
+
+        .panel-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0 4px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        .panel-btn:hover {
+            color: #fff;
+        }
+        .panel-btn.close:hover {
+            color: #f48771;
+        }
+
+        .panel.active-panel .panel-header {
+            background: #2a2a2a;
+            color: #fff;
+        }
+
+        .dirty-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            background-color: #ffffff;
+            border-radius: 50%;
+            margin-left: 8px;
+            box-shadow: 0 0 4px rgba(255,255,255,0.5);
+            visibility: hidden;
+        }
+        .dirty-dot.visible { visibility: visible; }
+
+        .panel.dragging { opacity: 0.4; border: 1px dashed var(--manti-accent); }
+
+        .panel-content { flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+        
+        .resizer { background: transparent; position: absolute; z-index: 10; transition: background 0.2s; }
+        .resizer:hover, .resizer.active { background: var(--manti-accent); }
+        .resizer-h { width: 6px; height: 100%; cursor: col-resize; right: -3px; top: 0; }
+        .resizer-v { height: 6px; width: 100%; cursor: row-resize; bottom: -3px; left: 0; }
+
+        .file-tree { padding: 5px; font-size: 13px; user-select: none; overflow: auto; flex: 1; }
+        
+        .tree-item {
+            padding: 2px 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            color: var(--manti-dough);
+            transition: background 0.15s;
+        }
+        .tree-item:hover { background: var(--bg-header); }
+        
+        .tree-item.dir { color: var(--manti-accent); font-weight: bold; }
+        
+        .tree-arrow {
+            display: inline-block;
+            width: 14px;
+            font-size: 10px;
+            margin-right: 4px;
+            text-align: center;
+            transition: transform 0.1s;
+        }
+        .tree-item.dir.expanded .tree-arrow {
+            transform: rotate(90deg);
+        }
+
+        .tree-children {
+            margin-left: 15px;
+            display: none; 
+        }
+        .tree-children.expanded {
+            display: block;
+        }
+
+        .editor-wrapper {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .editor-gutter {
+            width: 40px;
+            background: #151515;
+            border-right: 1px solid var(--border);
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 20px;
+            color: var(--text-dim);
+            text-align: right;
+            padding-top: 10px;
+            overflow: hidden;
+            user-select: none;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .gutter-line {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 5px;
+            height: 20px;
+            position: relative;
+        }
+        .gutter-line.current-line { background: rgba(212, 140, 74, 0.35); }
+
+        .breakpoint-dot {
+            position: absolute;
+            left: 5px;
+            width: 10px;
+            height: 10px;
+            background-color: #e53935;
+            border-radius: 50%;
+            display: none;
+            box-shadow: 0 0 5px rgba(229, 57, 53, 0.8);
+        }
+        .breakpoint-dot.active {
+            display: block;
+        }
+
+        .editor-area {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-main);
+            color: var(--manti-dough);
+            border: none;
+            resize: none;
+            padding: 10px;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 20px;
+            outline: none;
+            white-space: pre;
+            overflow: auto;
+            tab-size: 4;
+        }
+        .editor-area::placeholder { color: var(--text-dim); }
+
+        .term-container { width: 100%; height: 100%; padding: 6px; background: var(--terminal-bg); }
+        .xterm { height: 100%; }
+
+        .graph-container { width: 100%; height: 100%; }
+
+        .complexity-container { padding: 15px; font-size: 14px; overflow: auto; flex: 1; }
+        .complexity-title { font-size: 24px; color: var(--manti-accent); font-weight: bold; margin-bottom: 8px; }
+        .complexity-desc { color: var(--manti-dough); line-height: 1.4; }
+        .complexity-badge {
+            display: inline-block; padding: 4px 8px; background: var(--manti-brown);
+            color: #fff; border-radius: 4px; margin-top: 10px; font-weight: bold; font-size: 12px;
+        }
+
+        .console-container {
+            padding: 10px;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            color: #e8d8c3;
+            background: #0a0807;
+            overflow: auto;
+            flex: 1;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        #workspace.drag-over { background: rgba(212, 140, 74, 0.05); border: 2px dashed var(--manti-accent); }
+        .panel.drag-over { border: 1px dashed var(--manti-accent); background: rgba(212, 140, 74, 0.1); }
+
+        /* Модальные окна */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000;
+            opacity: 0; pointer-events: none; transition: opacity 0.2s;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .modal-window {
+            background: var(--manti-dough);
+            color: #1a1512;
+            border-radius: 12px;
+            padding: 20px;
+            width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+            border: 2px solid var(--manti-accent);
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .modal-window h3 { margin-top: 0; margin-bottom: 15px; color: var(--manti-brown); font-size: 16px; }
+        .modal-window p { font-size: 13px; margin-bottom: 15px; line-height: 1.4; color: #1a1512; }
+
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: background 0.2s; }
+        .modal-btn-cancel { background: transparent; color: var(--manti-brown); border: 1px solid var(--manti-brown); }
+        .modal-btn-cancel:hover { background: rgba(139, 90, 43, 0.1); }
+        .modal-btn-save-current { background: var(--manti-accent); color: #fff; }
+        .modal-btn-save-current:hover { background: #e89f5a; }
+        .modal-btn-save-all { background: var(--manti-brown); color: #fff; }
+        .modal-btn-save-all:hover { background: #a06b38; }
+
+        #notify-details div {
+            padding: 4px 8px;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            font-size: 12px;
+        }
+        #notify-details div:last-child {
+            border-bottom: none;
+        }
+
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--manti-accent); }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div id="toolbar">
+        <button class="toolbar-btn btn-run" onclick="startRun()">Запуск</button>
+        <button class="toolbar-btn btn-debug" onclick="startDebug()">Дебаг</button>
+        <div class="debug-actions" id="debug-actions">
+            <button data-debug-command="continue" onclick="sendDebugCommand('continue')" title="Продолжить (F5)">Продолжить</button>
+            <button data-debug-command="next" onclick="sendDebugCommand('next')" title="Шаг с обходом (F10)">Шаг</button>
+            <button data-debug-command="stepIn" onclick="sendDebugCommand('stepIn')" title="Шаг с заходом (F11)">Войти</button>
+            <button data-debug-command="stepOut" onclick="sendDebugCommand('stepOut')" title="Выйти из метода">Выйти</button>
+            <button data-debug-command="pause" onclick="sendDebugCommand('pause')" title="Приостановить">Пауза</button>
+            <button data-debug-command="stop" onclick="sendDebugCommand('stop')" title="Остановить">Стоп</button>
+        </div>
+        <button id="variables-toggle" type="button">Переменные</button>
+        <div id="collapsed-tabs"></div>
+    </div>
+
+    <div id="main-area">
+        <button id="expand-sidebar-btn" title="Развернуть панель">▶</button>
+
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h3>Панели</h3>
+                <button id="toggle-sidebar-btn" title="Свернуть панель">◀</button>
+            </div>
+            <div class="sidebar-item" draggable="true" data-type="explorer">Explorer</div>
+            <div class="sidebar-item" draggable="true" data-type="editor">Редактор</div>
+            <div class="sidebar-item" draggable="true" data-type="terminal">Терминал</div>
+            <div class="sidebar-item" draggable="true" data-type="graph">Граф</div>
+            <div class="sidebar-item" draggable="true" data-type="complexity">Сложность (Big O)</div>
+            <div class="sidebar-item" draggable="true" data-type="console">Консоль</div>
+        </div>
+
+        <div id="workspace"></div>
+    </div>
+</div>
+
+<section id="variables-window" aria-label="Переменные отладчика">
+    <div class="variables-header">
+        <span>Переменные</span>
+        <button id="variables-close" type="button" aria-label="Закрыть окно переменных">×</button>
+    </div>
+    <div id="variables-frames"></div>
+    <div id="variables-content">Переменные появятся при остановке отладчика.</div>
+</section>
+
+<!-- Модальное окно сохранения -->
+<div class="modal-overlay" id="save-modal">
+    <div class="modal-window">
+        <h3>Несохраненные изменения</h3>
+        <p>Обнаружены изменения в нескольких редакторах. Что вы хотите сделать?</p>
+        
+        <p style="margin-bottom:5px; font-weight:bold;">Список измененных редакторов:</p>
+        <div class="modal-list" id="modal-editor-list"></div>
+
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeSaveModal()">Отмена</button>
+            <button class="modal-btn modal-btn-save-current" onclick="actionSaveCurrent()">Сохранить текущий</button>
+            <button class="modal-btn modal-btn-save-all" onclick="actionSaveAll()">Сохранить все</button>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно уведомлений и подтверждений -->
+<div class="modal-overlay" id="notify-modal">
+    <div class="modal-window">
+        <h3 id="notify-title">Уведомление</h3>
+        <p id="notify-message">...</p>
+        <div id="notify-details" style="display:none; background: rgba(0,0,0,0.05); border-radius: 8px; max-height: 150px; overflow-y: auto; margin-bottom: 15px; padding: 5px; border: 1px solid rgba(0,0,0,0.1);"></div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" id="notify-cancel-btn" onclick="closeNotifyModal()">Отмена</button>
+            <button class="modal-btn modal-btn-save-current" id="notify-ok-btn" onclick="confirmNotifyModal()">ОК</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // 1. Состояние и утилиты
+    // ==========================================
+    const editorStates = new WeakMap(); 
+    let currentActiveEditor = null;
+    let modalSelectedEditor = null;
+    let editorCounter = 0; 
+    let selectedEditor = null;
+    let javaDebugSocket = null;
+    let javaDebugSocketPromise = null;
+    let javaDebugMode = null;
+    let javaStdinActive = false;
+    let javaInputBuffer = '';
+    const terminalSessions = new Map();
+    const javaOutputBuffers = new Map();
+    let activeTerminalId = null;
+    let selectedDebugFrame = null;
+    let debuggerPaused = false;
+    let variablesRequestCounter = 0;
+    const pendingVariableRequests = new Map();
+    
+    let dragSrcPanel = null;
+    let dragSrcStyles = null; 
+
+    let collapsedTabsData = []; 
+    let pendingOptimize = false;
+    // Флаг: только что была оптимизация, не позволяем перезаписывать код
+    let justOptimized = false;
+
+    let activePanel = null;
+    function setActivePanel(panel) {
+        if (activePanel) activePanel.classList.remove('active-panel');
+        activePanel = panel;
+        if (activePanel) activePanel.classList.add('active-panel');
+    }
+
+    document.addEventListener('mousedown', (e) => {
+        if (!e.target.closest('.panel')) {
+            setActivePanel(null);
+        }
+    });
+
+    function decodeBase64(str) {
+        const binStr = atob(str);
+        const bytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+        return new TextDecoder('utf-8').decode(bytes);
+    }
+
+    function ensureConsolePanel() {
+        if (!document.querySelector('.console-container') && typeof addPanelToWorkspace === 'function') {
+            addPanelToWorkspace('console');
+        }
+        return document.querySelector('.console-container');
+    }
+
+    async function ensureJavaTerminal() {
+        let session = activeTerminalId && terminalSessions.get(activeTerminalId);
+        if (!session || !session.term.element?.isConnected) {
+            session = [...terminalSessions.values()].find(item => item.term.element?.isConnected);
+        }
+        if (!session) {
+            addPanelToWorkspace('terminal');
+            session = [...terminalSessions.values()].reverse().find(item => item.term.element?.isConnected);
+        }
+        if (!session) throw new Error('Не удалось открыть панель терминала.');
+        activeTerminalId = session.id;
+        await session.ready;
+        session.term.focus();
+        return session;
+    }
+
+    function writeJavaOutput(message) {
+        const session = activeTerminalId && terminalSessions.get(activeTerminalId);
+        if (!session || !session.term.element?.isConnected) {
+            return;
+        }
+
+        const category = message.category || 'stdout';
+        let buffer = javaOutputBuffers.get(category) || '';
+        buffer += message.text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        lines.forEach(line => {
+            const timestamp = new Date().toLocaleTimeString();
+            session.term.writeln(`[${timestamp}] [Java/${category}] ${line}`);
+        });
+        javaOutputBuffers.set(category, buffer);
+        if (buffer && !session.outputTimer) {
+            session.outputTimer = setTimeout(() => {
+                const partial = javaOutputBuffers.get(category) || '';
+                if (partial) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    session.term.writeln(`[${timestamp}] [Java/${category}] ${partial}`);
+                    javaOutputBuffers.set(category, '');
+                }
+                session.outputTimer = null;
+            }, 100);
+        }
+    }
+
+    function sendJavaStdin(session, data) {
+        if (!javaDebugSocket || javaDebugSocket.readyState !== WebSocket.OPEN) return false;
+        if (data === '\r' || data === '\n') {
+            session.term.write('\r\n');
+            javaDebugSocket.send(JSON.stringify({ cmd: 'input', text: `${javaInputBuffer}\n` }));
+            javaInputBuffer = '';
+        } else if (data === '\u007f' || data === '\b') {
+            if (javaInputBuffer.length) {
+                javaInputBuffer = javaInputBuffer.slice(0, -1);
+                session.term.write('\b \b');
+            }
+        } else if (data === '\u0003') {
+            javaInputBuffer = '';
+            session.term.write('^C\r\n');
+            javaDebugSocket.send(JSON.stringify({ cmd: 'stop' }));
+        } else if (!/[\u0000-\u001f\u007f]/.test(data)) {
+            javaInputBuffer += data;
+            session.term.write(data);
+        }
+        return true;
+    }
+
+    // Функция для добавления лога в консоль
+    window.appendLog = function(text) {
+        const existing = document.querySelectorAll('.console-container');
+        if (!existing.length) ensureConsolePanel();
+        document.querySelectorAll('.console-container').forEach(container => {
+            const line = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            line.textContent = `[${time}] ${text}`;
+            container.appendChild(line);
+            container.scrollTop = container.scrollHeight;
+        });
+    };
+
+    // ==========================================
+    // 2. Работа с модальным окном (сохранение)
+    // ==========================================
+    const modalOverlay = document.getElementById('save-modal');
+    const modalList = document.getElementById('modal-editor-list');
+
+    function openSaveModal(triggerEditor, actionCallback) {
+        currentActiveEditor = triggerEditor;
+        modalSelectedEditor = triggerEditor;
+        modalList.innerHTML = '';
+
+        const dirtyEditors = [];
+        document.querySelectorAll('.editor-area').forEach(editor => {
+            const state = editorStates.get(editor);
+            if (state && state.dirty) {
+                dirtyEditors.push({ editor, state });
+            }
+        });
+
+        if (dirtyEditors.length === 0) {
+            if (actionCallback) actionCallback();
+            return;
+        }
+
+        window.pendingSaveAction = actionCallback;
+
+        dirtyEditors.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'modal-list-item';
+            
+            const fileName = item.state.path ? item.state.path.split(/[\\/]/).pop() : "(без файла)";
+            div.textContent = `${item.state.editorTitle} — ${fileName}`;
+            
+            if (item.editor === triggerEditor) div.classList.add('selected');
+
+            div.onclick = () => {
+                modalList.querySelectorAll('.modal-list-item').forEach(el => el.classList.remove('selected'));
+                div.classList.add('selected');
+                modalSelectedEditor = item.editor;
+            };
+
+            modalList.appendChild(div);
+        });
+
+        modalOverlay.classList.add('active');
+    }
+
+    function closeSaveModal() {
+        modalOverlay.classList.remove('active');
+        currentActiveEditor = null;
+        modalSelectedEditor = null;
+        window.pendingSaveAction = null;
+    }
+
+    function actionSaveCurrent() {
+        if (modalSelectedEditor) saveEditor(modalSelectedEditor);
+        closeSaveModal();
+        if (window.pendingSaveAction) window.pendingSaveAction();
+    }
+
+    function actionSaveAll() {
+        document.querySelectorAll('.editor-area').forEach(editor => {
+            const state = editorStates.get(editor);
+            if (state && state.dirty) saveEditor(editor);
+        });
+        closeSaveModal();
+        if (window.pendingSaveAction) window.pendingSaveAction();
+    }
+
+    function saveEditor(editor) {
+        const state = editorStates.get(editor);
+        if (!state || !state.path) return;
+
+        const payload = JSON.stringify({
+            path: state.path,
+            content: editor.value
+        });
+
+        if (typeof webui !== 'undefined' && webui.save_file) {
+            webui.save_file(payload);
+        }
+    }
+
+    // ==========================================
+    // 3. Модальное окно уведомлений / подтверждений
+    // ==========================================
+    const notifyOverlay = document.getElementById('notify-modal');
+    const notifyTitle = document.getElementById('notify-title');
+    const notifyMessage = document.getElementById('notify-message');
+    const notifyDetails = document.getElementById('notify-details');
+    const notifyCancelBtn = document.getElementById('notify-cancel-btn');
+    const notifyOkBtn = document.getElementById('notify-ok-btn');
+
+    let notifyCallback = null;
+
+    function showNotifyModal(title, message, options = {}) {
+        notifyTitle.textContent = title;
+        notifyMessage.textContent = message;
+        notifyDetails.innerHTML = '';
+        
+        if (options.details && options.details.length > 0) {
+            notifyDetails.style.display = 'block';
+            options.details.forEach(item => {
+                const div = document.createElement('div');
+                div.textContent = item;
+                notifyDetails.appendChild(div);
+            });
+        } else {
+            notifyDetails.style.display = 'none';
+        }
+
+        notifyOkBtn.textContent = options.confirmText || 'ОК';
+        
+        if (options.cancelText === null) {
+            notifyCancelBtn.style.display = 'none';
+        } else {
+            notifyCancelBtn.style.display = 'inline-block';
+            notifyCancelBtn.textContent = options.cancelText || 'Отмена';
+        }
+
+        notifyCallback = options.onConfirm || null;
+        notifyOverlay.classList.add('active');
+    }
+
+    function closeNotifyModal() {
+        notifyOverlay.classList.remove('active');
+        notifyCallback = null;
+    }
+
+    function confirmNotifyModal() {
+        const cb = notifyCallback;
+        closeNotifyModal();
+        if (typeof cb === 'function') cb();
+    }
+
+    function showInfo(title, message) {
+        showNotifyModal(title, message, { cancelText: null, confirmText: 'ОК' });
+    }
+
+    function showConfirm(title, message, onConfirm) {
+        showNotifyModal(title, message, { onConfirm: onConfirm });
+    }
+
+    // ==========================================
+    // 4. Callbacks из Python
+    // ==========================================
+    window.onFilesLoaded = function(b64Str) {
+        const trees = document.querySelectorAll('.file-tree');
+        try {
+            const data = JSON.parse(decodeBase64(b64Str));
+            trees.forEach(tree => {
+                if (data.error) { 
+                    tree.innerHTML = `<span style="color:var(--manti-accent)">Ошибка: ${data.error}</span>`; 
+                    return; 
+                }
+                tree.innerHTML = '';
+
+                const renderTree = (children, container, depth = 0) => {
+                    children.forEach(child => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'tree-item ' + (child.type === 'dir' ? 'dir' : '');
+                        itemDiv.style.paddingLeft = (5 + depth * 12) + 'px';
+
+                        const arrow = document.createElement('span');
+                        arrow.className = 'tree-arrow';
+                        arrow.textContent = child.type === 'dir' ? '▶' : '';
+                        
+                        const nameSpan = document.createElement('span');
+                        nameSpan.textContent = (child.type === 'dir' ? '📁 ' : '📄 ') + child.name;
+                        
+                        itemDiv.appendChild(arrow);
+                        itemDiv.appendChild(nameSpan);
+                        container.appendChild(itemDiv);
+
+                        if (child.type === 'dir') {
+                            if (child.children && child.children.length > 0) {
+                                const childrenContainer = document.createElement('div');
+                                childrenContainer.className = 'tree-children';
+                                container.appendChild(childrenContainer);
+                                
+                                renderTree(child.children, childrenContainer, depth + 1);
+
+                                if (depth === 0) {
+                                    itemDiv.classList.add('expanded');
+                                    childrenContainer.classList.add('expanded');
+                                }
+
+                                itemDiv.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    itemDiv.classList.toggle('expanded');
+                                    childrenContainer.classList.toggle('expanded');
+                                });
+                            } else {
+                                itemDiv.style.cursor = 'default';
+                                arrow.style.opacity = '0.3';
+                            }
+                        } else {
+                            itemDiv.addEventListener('click', () => {
+                                const safePath = btoa(unescape(encodeURIComponent(child.path)));
+                                if (typeof webui !== 'undefined') webui.read_file(safePath);
+                            });
+                        }
+                    });
+                };
+
+                renderTree(data, tree, 0);
+            });
+        } catch(e) { trees.forEach(tree => tree.innerHTML = "Ошибка: " + e.message); }
+    };
+
+    window.onFileContentLoaded = function(b64Str) {
+        try {
+            const data = JSON.parse(decodeBase64(b64Str));
+            if (data.error) { console.error(data.error); return; }
+
+            // Если только что была оптимизация — не перезаписываем код
+            if (justOptimized) {
+                justOptimized = false;
+                return;
+            }
+
+            document.querySelectorAll('.editor-area').forEach(editor => {
+                editor.value = data.content;
+                
+                let state = editorStates.get(editor);
+                if (!state) {
+                    state = { editorId: '', editorTitle: '' };
+                }
+                
+                state.path = data.path;
+                state.originalContent = data.content;
+                state.dirty = false;
+                
+                editorStates.set(editor, state);
+
+                const panel = editor.closest('.panel');
+                if (panel) {
+                    const titleSpan = panel.querySelector('.panel-title span');
+                    if (titleSpan && state.editorTitle) {
+                        const fileName = data.path.split(/[\\/]/).pop();
+                        titleSpan.textContent = `${state.editorTitle} — ${fileName}`;
+                    }
+                    const dot = panel.querySelector('.dirty-dot');
+                    if (dot) dot.classList.remove('visible');
+                }
+
+                const wrapper = editor.closest('.editor-wrapper');
+                if (wrapper) {
+                    const gutter = wrapper.querySelector('.editor-gutter');
+                    if (gutter) updateGutter(editor, gutter);
+                }
+            });
+
+            refreshAllComplexityPanels();
+            if (document.querySelector('.graph-container')) {
+                requestGraphForCurrentEditor(false);
+            }
+
+        } catch(e) { console.error(e); }
+    };
+
+    function getSelectedEditor() {
+        if (selectedEditor && selectedEditor.isConnected) return selectedEditor;
+        if (activePanel) {
+            const editor = activePanel.querySelector('.editor-area');
+            if (editor) return editor;
+        }
+        const editors = document.querySelectorAll('.editor-area');
+        return editors.length ? editors[editors.length - 1] : null;
+    }
+
+    function showDebugControls(visible) {
+        const controls = document.getElementById('debug-actions');
+        if (controls) controls.style.display = visible ? 'flex' : 'none';
+        updateDebugControls();
+    }
+
+    function updateDebugControls() {
+        const controls = document.getElementById('debug-actions');
+        if (!controls) return;
+        controls.querySelectorAll('[data-debug-command]').forEach(button => {
+            const command = button.dataset.debugCommand;
+            if (command === 'continue' || command === 'next' || command === 'stepIn' || command === 'stepOut') {
+                button.disabled = !debuggerPaused;
+            } else if (command === 'pause') {
+                button.disabled = debuggerPaused;
+            }
+        });
+    }
+
+    function showVariablesWindow(visible) {
+        const panel = document.getElementById('variables-window');
+        const toggle = document.getElementById('variables-toggle');
+        if (panel) panel.classList.toggle('visible', visible);
+        if (toggle) toggle.style.display = javaDebugMode === 'debug' ? 'block' : 'none';
+    }
+
+    document.getElementById('variables-toggle').addEventListener('click', () => {
+        const panel = document.getElementById('variables-window');
+        showVariablesWindow(!panel.classList.contains('visible'));
+    });
+    document.getElementById('variables-close').addEventListener('click', () => {
+        showVariablesWindow(false);
+    });
+
+    function clearVariableContent(message) {
+        pendingVariableRequests.clear();
+        const content = document.getElementById('variables-content');
+        const frames = document.getElementById('variables-frames');
+        if (content) content.textContent = message;
+        if (frames) frames.replaceChildren();
+    }
+
+    function requestVariables(ref, target, kind) {
+        if (!ref || !javaDebugSocket || javaDebugSocket.readyState !== WebSocket.OPEN) return;
+        const requestId = `variables-${++variablesRequestCounter}`;
+        pendingVariableRequests.set(requestId, { target, kind });
+        javaDebugSocket.send(JSON.stringify({ cmd: 'variables', ref, requestId }));
+    }
+
+    function renderVariableItems(target, items) {
+        target.replaceChildren();
+        if (!items.length) {
+            target.textContent = 'Нет инициализированных переменных.';
+            return;
+        }
+        items.forEach(item => {
+            const row = document.createElement('div');
+            row.className = `variable-row${item.ref ? ' expandable' : ''}`;
+            const name = document.createElement('span');
+            name.className = 'variable-name';
+            name.textContent = item.name;
+            const type = document.createElement('span');
+            type.className = 'variable-type';
+            type.textContent = item.vtype ? ` (${item.vtype})` : '';
+            const value = document.createElement('span');
+            value.className = 'variable-value';
+            value.textContent = ` = ${item.value}`;
+            row.append(name, type, value);
+            target.appendChild(row);
+
+            if (item.ref) {
+                const children = document.createElement('div');
+                children.className = 'variable-children';
+                children.hidden = true;
+                target.appendChild(children);
+                row.addEventListener('click', () => {
+                    if (!children.hidden) {
+                        children.hidden = true;
+                        return;
+                    }
+                    children.hidden = false;
+                    if (!children.dataset.loaded) {
+                        children.dataset.loaded = 'pending';
+                        requestVariables(item.ref, children, 'nested');
+                    }
+                });
+            }
+        });
+    }
+
+    function renderVariableScopes(message) {
+        if (message.frameId !== selectedDebugFrame) return;
+        const content = document.getElementById('variables-content');
+        if (!content) return;
+        content.replaceChildren();
+        (message.scopes || []).forEach(scope => {
+            const section = document.createElement('section');
+            section.className = 'variable-scope';
+            const heading = document.createElement('div');
+            heading.className = 'variable-scope-title';
+            heading.textContent = scope.name;
+            const values = document.createElement('div');
+            values.textContent = scope.ref ? 'Загрузка…' : 'Нет данных.';
+            section.append(heading, values);
+            content.appendChild(section);
+            if (scope.ref) requestVariables(scope.ref, values, 'scope');
+        });
+        if (!message.scopes || !message.scopes.length) {
+            content.textContent = 'Нет доступных областей видимости.';
+        }
+    }
+
+    function renderDebugFrames(message) {
+        const frames = document.getElementById('variables-frames');
+        const content = document.getElementById('variables-content');
+        if (!frames || !content) return;
+        frames.replaceChildren();
+        const available = (message.frames || []).filter(frame => frame.id !== undefined && frame.id !== null);
+        if (!available.length) {
+            selectedDebugFrame = null;
+            content.textContent = 'Нет доступных кадров стека.';
+            return;
+        }
+        available.forEach((frame, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `variables-frame${index === 0 ? ' active' : ''}`;
+            button.textContent = `${frame.name} — ${frame.line}`;
+            button.title = frame.path || frame.name;
+            button.addEventListener('click', () => {
+                selectedDebugFrame = frame.id;
+                frames.querySelectorAll('.variables-frame').forEach(item => item.classList.remove('active'));
+                button.classList.add('active');
+                pendingVariableRequests.clear();
+                content.textContent = 'Загрузка переменных…';
+                if (javaDebugSocket && javaDebugSocket.readyState === WebSocket.OPEN) {
+                    javaDebugSocket.send(JSON.stringify({ cmd: 'selectFrame', frameId: frame.id }));
+                }
+            });
+            frames.appendChild(button);
+        });
+        selectedDebugFrame = available[0].id;
+    }
+
+    function showDebugLocation(message) {
+        const frame = message.frames && message.frames[0];
+        if (!frame || !frame.path || !frame.line) return;
+
+        const expectedPath = frame.path.replace(/\\/g, '/').toLowerCase();
+        let matchingEditor = null;
+        document.querySelectorAll('.editor-area').forEach(editor => {
+            const state = editorStates.get(editor);
+            const editorPath = state && state.path
+                ? state.path.replace(/\\/g, '/').toLowerCase()
+                : '';
+            if (editorPath === expectedPath || editorPath.endsWith(`/${expectedPath}`)) {
+                matchingEditor = editor;
+            }
+            const gutter = editor.closest('.editor-wrapper')?.querySelector('.editor-gutter');
+            gutter?.querySelectorAll('.gutter-line').forEach(line => line.classList.remove('current-line'));
+        });
+        if (!matchingEditor) return;
+
+        const gutter = matchingEditor.closest('.editor-wrapper')?.querySelector('.editor-gutter');
+        const line = gutter?.querySelectorAll('.gutter-line')[frame.line - 1];
+        if (line) line.classList.add('current-line');
+
+        const lineStart = matchingEditor.value.split('\n').slice(0, frame.line - 1)
+            .reduce((offset, text) => offset + text.length + 1, 0);
+        matchingEditor.focus();
+        matchingEditor.setSelectionRange(lineStart, lineStart);
+        selectedEditor = matchingEditor;
+    }
+
+    function appendDebugMessage(message) {
+        if (message.type === 'status' && message.text) {
+            window.appendLog(`[Java] ${message.text}`);
+        } else if (message.type === 'output' && message.text) {
+            writeJavaOutput(message);
+            const category = message.category || 'stdout';
+            const lines = message.text.replace(/\r\n?/g, '\n').split('\n');
+            if (lines[lines.length - 1] === '') lines.pop();
+            lines.forEach(line => window.appendLog(`[Java/${category}] ${line}`));
+        } else if (message.type === 'breakpoints') {
+            const verified = (message.items || []).filter(item => item.verified).map(item => item.line);
+            window.appendLog(`[Java] Точки останова подтверждены: ${verified.join(', ') || 'нет'}`);
+        } else if (message.type === 'started') {
+            debuggerPaused = false;
+            showDebugControls(javaDebugMode === 'debug');
+            window.appendLog('[Java] Процесс запущен.');
+        } else if (message.type === 'terminalStarted') {
+            javaStdinActive = true;
+            javaInputBuffer = '';
+            window.appendLog(`[Java] Интерактивный процесс запущен (PID ${message.processId}).`);
+        } else if (message.type === 'stopped') {
+            const frame = message.frames && message.frames[0];
+            debuggerPaused = true;
+            updateDebugControls();
+            showDebugLocation(message);
+            showVariablesWindow(true);
+            clearVariableContent('Загрузка переменных…');
+            renderDebugFrames(message);
+            window.appendLog(frame
+                ? `[Java] Пауза: ${frame.path}:${frame.line} (${message.reason || 'остановка'})`
+                : `[Java] Пауза: ${message.reason || 'остановка'}`);
+        } else if (message.type === 'scopes') {
+            if (debuggerPaused) renderVariableScopes(message);
+        } else if (message.type === 'variables') {
+            const pending = pendingVariableRequests.get(message.requestId);
+            if (!pending || !debuggerPaused) return;
+            pendingVariableRequests.delete(message.requestId);
+            if (message.error) {
+                pending.target.textContent = `Не удалось загрузить: ${message.error}`;
+            } else {
+                if (pending.kind === 'nested') pending.target.dataset.loaded = 'true';
+                renderVariableItems(pending.target, message.items || []);
+            }
+        } else if (message.type === 'continued') {
+            debuggerPaused = false;
+            updateDebugControls();
+            clearVariableContent('Выполнение продолжается. Значения обновятся при следующей остановке.');
+            window.appendLog('[Java] Выполнение продолжено.');
+        } else if (message.type === 'terminated') {
+            debuggerPaused = false;
+            updateDebugControls();
+            javaStdinActive = false;
+            javaInputBuffer = '';
+            showDebugControls(false);
+            showVariablesWindow(false);
+            clearVariableContent('Отладочная сессия завершена.');
+            document.querySelectorAll('.gutter-line.current-line')
+                .forEach(line => line.classList.remove('current-line'));
+            window.appendLog('[Java] Процесс завершён.');
+        } else if (message.type === 'commandRejected') {
+            debuggerPaused = Boolean(message.paused);
+            updateDebugControls();
+            window.appendLog(`[Java] ${message.text}`);
+        } else if (message.type === 'inputAccepted') {
+            window.appendLog(`[Java] ${message.text}`);
+        } else if (message.type === 'error' && message.text) {
+            window.appendLog(`[Java] Ошибка: ${message.text}`);
+            showInfo('Ошибка Java', message.text);
+        } else if (message.text) {
+            window.appendLog(`[Java] ${message.text}`);
+        }
+    }
+
+    function sendDebugCommand(command) {
+        if (!javaDebugSocket || javaDebugSocket.readyState !== WebSocket.OPEN) {
+            showInfo('Отладчик недоступен', 'Нет активного соединения с Java debug-сервером.');
+            return;
+        }
+        if (['continue', 'next', 'stepIn', 'stepOut'].includes(command) && !debuggerPaused) return;
+        if (command === 'pause' && debuggerPaused) return;
+        javaDebugSocket.send(JSON.stringify({ cmd: command }));
+        if (['continue', 'next', 'stepIn', 'stepOut'].includes(command)) {
+            debuggerPaused = false;
+            updateDebugControls();
+        }
+        window.appendLog(`[Java] Команда: ${command}`);
+    }
+
+    function connectJavaDebugServer() {
+        if (javaDebugSocket && javaDebugSocket.readyState === WebSocket.OPEN) {
+            return Promise.resolve(javaDebugSocket);
+        }
+        if (javaDebugSocketPromise) return javaDebugSocketPromise;
+
+        javaDebugSocketPromise = new Promise((resolve, reject) => {
+            const socket = new WebSocket('ws://127.0.0.1:8086/debug/ws');
+            javaDebugSocket = socket;
+            let connected = false;
+            socket.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    appendDebugMessage(message);
+                } catch (error) {
+                    window.appendLog(`[Java] Некорректный ответ сервера: ${error.message}`);
+                }
+            };
+            socket.onopen = () => {
+                connected = true;
+                resolve(socket);
+            };
+            socket.onerror = () => reject(new Error('Не удалось подключиться к Java debug-серверу.'));
+            socket.onclose = () => {
+                if (!connected) reject(new Error('Java debug-сервер закрыл соединение до запуска.'));
+                if (javaDebugSocket === socket) javaDebugSocket = null;
+                javaDebugSocketPromise = null;
+            };
+        }).catch((error) => {
+            javaDebugSocketPromise = null;
+            throw error;
+        });
+        return javaDebugSocketPromise;
+    }
+
+    async function startJava(mode) {
+        ensureConsolePanel();
+        const editor = getSelectedEditor();
+        const state = editor && editorStates.get(editor);
+        if (!editor || !state || !state.path) {
+            showInfo('Нет Java-файла', 'Откройте .java-файл в редакторе перед запуском.');
+            return;
+        }
+        if (!state.path.toLowerCase().endsWith('.java')) {
+            showInfo('Не Java-файл', 'Для запуска и отладки выберите файл с расширением .java.');
+            return;
+        }
+
+        try {
+            javaDebugMode = mode;
+            debuggerPaused = false;
+            updateDebugControls();
+            const terminal = await ensureJavaTerminal();
+            terminal.term.clear();
+            terminal.term.writeln(`Java ${mode === 'debug' ? 'debug' : 'run'}: ${state.path}`);
+            terminal.term.writeln('При вводе на breakpoint нажмите «Продолжить», чтобы программа обработала строку.');
+            terminal.term.writeln('Ввод программы: печатайте здесь и нажмите Enter.');
+            javaOutputBuffers.clear();
+            javaStdinActive = false;
+            javaInputBuffer = '';
+            showVariablesWindow(false);
+            clearVariableContent('Переменные появятся при остановке отладчика.');
+            const variablesToggle = document.getElementById('variables-toggle');
+            if (variablesToggle) variablesToggle.style.display = mode === 'debug' ? 'block' : 'none';
+            showDebugControls(false);
+            window.appendLog(`[Java] Подготовка: ${mode === 'debug' ? 'отладка' : 'запуск'} ${state.path}`);
+            const baseUrl = 'http://127.0.0.1:8086/debug';
+            const saveResponse = await fetch(`${baseUrl}/api/file`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: state.path, text: editor.value })
+            });
+            const saveData = await saveResponse.json();
+            if (!saveResponse.ok) {
+                throw new Error(saveData.detail || 'Не удалось сохранить Java-файл.');
+            }
+
+            const mainResponse = await fetch(
+                `${baseUrl}/api/main-class?path=${encodeURIComponent(state.path)}`
+            );
+            const mainData = await mainResponse.json();
+            if (!mainResponse.ok) {
+                throw new Error(mainData.detail || 'Не удалось определить главный Java-класс.');
+            }
+
+            const socket = await connectJavaDebugServer();
+            const breakpoints = {};
+            if (mode === 'debug') {
+                const gutter = editor.closest('.editor-wrapper')?.querySelector('.editor-gutter');
+                const lines = [];
+                gutter?.querySelectorAll('.gutter-line').forEach((line, index) => {
+                    if (line.querySelector('.breakpoint-dot.active')) lines.push(index + 1);
+                });
+                if (lines.length) breakpoints[mainData.path] = lines;
+            }
+
+            socket.send(JSON.stringify({
+                cmd: 'start',
+                mainClass: mainData.path,
+                breakpoints
+            }));
+            window.appendLog(`[Java] ${mode === 'debug' ? 'Отладка' : 'Запуск'}: ${mainData.fqcn}`);
+        } catch (error) {
+            window.appendLog(`[Java] Ошибка: ${error.message}`);
+            showInfo('Не удалось запустить Java', error.message);
+            showDebugControls(false);
+        }
+    }
+
+    window.onFileSaved = function(b64Str) {
+        try {
+            const data = JSON.parse(decodeBase64(b64Str));
+            if (data.error) { showInfo("Ошибка сохранения", data.error); return; }
+
+            document.querySelectorAll('.editor-area').forEach(editor => {
+                const state = editorStates.get(editor);
+                if (state && state.path === data.path) {
+                    state.originalContent = editor.value;
+                    state.dirty = false;
+                    
+                    const panel = editor.closest('.panel');
+                    if (panel) {
+                        const dot = panel.querySelector('.dirty-dot');
+                        if (dot) dot.classList.remove('visible');
+                    }
+                }
+            });
+        } catch(e) { console.error(e); }
+    };
+
+    function requestGraphForCurrentEditor(showMessages = true) {
+        const editors = document.querySelectorAll('.editor-area');
+        if (editors.length === 0) {
+            if (showMessages) {
+                showInfo('Нет редакторов', 'Откройте файл в панели Explorer, чтобы построить граф.');
+            }
+            return false;
+        }
+
+        const code = editors[editors.length - 1].value;
+        if (!code.trim()) {
+            if (showMessages) {
+                showInfo('Редактор пуст', 'Откройте файл или добавьте Java-код в редактор.');
+            }
+            return false;
+        }
+
+        if (typeof webui === 'undefined' || !webui.parse_java) {
+            if (showMessages) {
+                showInfo('WebUI недоступен', 'Не удалось связаться с обработчиком парсинга Java.');
+            }
+            return false;
+        }
+
+        const b64Code = btoa(unescape(encodeURIComponent(code)));
+        webui.parse_java(b64Code);
+        return true;
+    }
+
+    window.onGraphLoaded = function(b64Str) {
+        try {
+            const data = JSON.parse(decodeBase64(b64Str));
+            document.querySelectorAll('.graph-container').forEach(container => {
+                container.innerHTML = '';
+                if (data.error) {
+                    const error = document.createElement('div');
+                    error.style.cssText = 'color:red; padding:10px;';
+                    error.textContent = data.error;
+                    container.appendChild(error);
+                    return;
+                }
+                if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+                    container.textContent = 'Парсер вернул некорректный граф.';
+                    return;
+                }
+                
+                new vis.Network(container, {
+                    nodes: new vis.DataSet(data.nodes),
+                    edges: new vis.DataSet(data.edges)
+                }, {
+                    nodes: { borderWidth: 2, color: { background: '#222222', border: '#d48c4a' }, font: { color: '#f5e6d3' } },
+                    edges: { color: '#777777', smooth: true },
+                    physics: { enabled: true }
+                });
+            });
+
+            if (pendingOptimize) {
+                pendingOptimize = false;
+                if (data.error || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+                    return;
+                }
+                const editors = document.querySelectorAll('.editor-area');
+                if (editors.length === 0) {
+                    showInfo('Нет редакторов', 'Откройте файл в панели Explorer, чтобы использовать эту функцию.');
+                    return;
+                }
+                const code = editors[editors.length - 1].value;
+                const payload = JSON.stringify({ code: code, graph: data });
+                const b64 = btoa(unescape(encodeURIComponent(payload)));
+                if (typeof webui !== 'undefined' && webui.optimize_graph) {
+                    webui.optimize_graph(b64);
+                }
+            }
+        } catch(e) { console.error(e); }
+    };
+
+    window.onComplexityAnalyzed = function(b64Str) {
+        try {
+            const data = JSON.parse(decodeBase64(b64Str));
+            
+            document.querySelectorAll('.complexity-container').forEach(container => {
+                if (data.error) {
+                    container.innerHTML = `<div style="color:red">Ошибка: ${data.error}</div>`;
+                    return;
+                }
+
+                container.innerHTML = `
+                    <div class="complexity-title">${data.complexity}</div>
+                    <div class="complexity-desc">${data.description}</div>
+                    <div class="complexity-badge">Макс. вложенность: ${data.max_depth}</div>
+                `;
+            });
+        } catch(e) {
+            console.error("Ошибка анализа сложности:", e);
+        }
+    };
+
+    window.onGraphOptimized = function(b64Str) {
+        try {
+            const data = JSON.parse(decodeBase64(b64Str));
+            if (data.error) {
+                showInfo('Ошибка оптимизации', data.error);
+                return;
+            }
+
+            // Включаем флаг, чтобы read_file не перезаписал новый код
+            justOptimized = true;
+
+            // 1. Обновляем код в редакторе и сохраняем его в исходный файл
+            document.querySelectorAll('.editor-area').forEach(editor => {
+                const state = editorStates.get(editor);
+                if (state && state.path) {
+                    editor.value = data.new_code;
+                    state.originalContent = data.new_code;
+                    state.dirty = false;
+                    
+                    const panel = editor.closest('.panel');
+                    if (panel) {
+                        const dot = panel.querySelector('.dirty-dot');
+                        if (dot) dot.classList.remove('visible');
+                    }
+                    const wrapper = editor.closest('.editor-wrapper');
+                    if (wrapper) {
+                        const gutter = wrapper.querySelector('.editor-gutter');
+                        if (gutter) updateGutter(editor, gutter);
+                    }
+
+                    // Сохраняем оптимизированный код в ИСХОДНЫЙ файл
+                    const payload = JSON.stringify({
+                        path: state.path,
+                        content: data.new_code
+                    });
+                    if (typeof webui !== 'undefined' && webui.save_file) {
+                        webui.save_file(payload);
+                    }
+                }
+            });
+
+            // 2. Перерисовываем граф
+            document.querySelectorAll('.graph-container').forEach(container => {
+                container.innerHTML = '';
+                if (data.optimized_graph && data.optimized_graph.nodes) {
+                    new vis.Network(container, {
+                        nodes: new vis.DataSet(data.optimized_graph.nodes),
+                        edges: new vis.DataSet(data.optimized_graph.edges)
+                    }, {
+                        nodes: { borderWidth: 2, color: { background: '#222222', border: '#d48c4a' }, font: { color: '#f5e6d3' } },
+                        edges: { color: '#777777', smooth: true },
+                        physics: { enabled: true }
+                    });
+                }
+            });
+
+            // 3. Показываем модальное окно с отчётом
+            const changed = data.changed_methods || [];
+            if (changed.length > 0) {
+                showNotifyModal(
+                    'Оптимизация завершена',
+                    'Исходный файл был изменён. Изменённые методы:',
+                    {
+                        details: changed,
+                        confirmText: 'Принять',
+                        cancelText: 'Отмена',
+                        onConfirm: () => {
+                            // Всё уже применено и сохранено
+                        }
+                    }
+                );
+            } else {
+                showInfo('Оптимизация завершена', 'Модель не нашла методов для оптимизации.');
+            }
+
+        } catch(e) {
+            console.error(e);
+            showInfo('Ошибка', 'Ошибка парсинга ответа оптимизации.');
+        }
+    };
+
+    function refreshAllComplexityPanels() {
+        const editors = document.querySelectorAll('.editor-area');
+        if (editors.length === 0) return;
+
+        let targetEditor = editors[editors.length - 1];
+        const code = targetEditor.value;
+
+        if (!code.trim()) return;
+
+        const b64Code = btoa(unescape(encodeURIComponent(code)));
+        if (typeof webui !== 'undefined' && webui.analyze_complexity) {
+            webui.analyze_complexity(b64Code);
+        }
+    }
+
+    // ==========================================
+    // 5. Сворачивание Sidebar
+    // ==========================================
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('toggle-sidebar-btn');
+    const expandBtn = document.getElementById('expand-sidebar-btn');
+
+    toggleBtn.addEventListener('click', () => {
+        sidebar.classList.add('collapsed');
+        expandBtn.style.display = 'block';
+    });
+
+    expandBtn.addEventListener('click', () => {
+        sidebar.classList.remove('collapsed');
+        expandBtn.style.display = 'none';
+    });
+
+    // ==========================================
+    // 6. Drag & Drop из Sidebar
+    // ==========================================
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', () => {
+            addPanelToWorkspace(item.dataset.type);
+        });
+
+        item.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('application/x-sidebar-type', item.dataset.type);
+            e.dataTransfer.effectAllowed = 'copy';
+        });
+    });
+
+    const workspace = document.getElementById('workspace');
+
+    workspace.addEventListener('dragover', (e) => {
+        if (e.dataTransfer.types.includes('application/x-sidebar-type') || 
+            e.dataTransfer.types.includes('application/x-collapsed-tab')) {
+            e.preventDefault();
+            workspace.classList.add('drag-over');
+        }
+    });
+
+    workspace.addEventListener('dragleave', (e) => {
+        if (e.target === workspace) workspace.classList.remove('drag-over');
+    });
+
+    workspace.addEventListener('drop', (e) => {
+        workspace.classList.remove('drag-over');
+        
+        const type = e.dataTransfer.getData('application/x-sidebar-type');
+        if (type) {
+            e.preventDefault();
+            addPanelToWorkspace(type);
+            return;
+        }
+
+        const collapsedId = e.dataTransfer.getData('application/x-collapsed-tab');
+        if (collapsedId) {
+            e.preventDefault();
+            restoreCollapsedTab(collapsedId);
+        }
+    });
+
+    let termCounter = 0;
+
+    function addPanelToWorkspace(type) {
+        let row = workspace.lastElementChild;
+        if (!row || row.children.length >= 2) {
+            row = document.createElement('div');
+            row.className = 'row';
+            workspace.appendChild(row);
+        }
+        row.appendChild(createPanelElement(type));
+    }
+
+    // ==========================================
+    // 7. Логика сворачивания и закрытия
+    // ==========================================
+    const collapsedTabsContainer = document.getElementById('collapsed-tabs');
+
+    function collapsePanel(panel) {
+        const header = panel.querySelector('.panel-header');
+        const titleText = header.querySelector('.panel-title span').textContent;
+        
+        let type = 'unknown';
+        if (panel.querySelector('.file-tree')) type = 'explorer';
+        else if (panel.querySelector('.editor-area')) type = 'editor';
+        else if (panel.querySelector('.term-container')) type = 'terminal';
+        else if (panel.querySelector('.graph-container')) type = 'graph';
+        else if (panel.querySelector('.complexity-container')) type = 'complexity';
+        else if (panel.querySelector('.console-container')) type = 'console';
+
+        const tabId = 'tab-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        
+        let savedEditorState = null;
+        if (type === 'editor') {
+            const editor = panel.querySelector('.editor-area');
+            if (editor) {
+                savedEditorState = editorStates.get(editor);
+            }
+        }
+
+        const tabData = {
+            id: tabId,
+            type: type,
+            title: titleText,
+            savedEditorState: savedEditorState
+        };
+        collapsedTabsData.push(tabData);
+
+        const tabEl = document.createElement('div');
+        tabEl.className = 'collapsed-tab';
+        tabEl.draggable = true;
+        tabEl.dataset.tabId = tabId;
+
+        let icon = '📄';
+        if (type === 'explorer') icon = '📁';
+        else if (type === 'terminal') icon = '⌨️';
+        else if (type === 'graph') icon = '🕸️';
+        else if (type === 'complexity') icon = '📊';
+        else if (type === 'console') icon = '💻';
+
+        tabEl.innerHTML = `<span>${icon} ${titleText}</span>`;
+        
+        const closeBtn = document.createElement('span');
+        closeBtn.className = 'tab-close';
+        closeBtn.textContent = '×';
+        closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            removeCollapsedTab(tabId, true);
+        };
+        tabEl.appendChild(closeBtn);
+
+        tabEl.addEventListener('click', () => {
+            restoreCollapsedTab(tabId);
+        });
+
+        tabEl.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('application/x-collapsed-tab', tabId);
+            e.dataTransfer.effectAllowed = 'move';
+            tabEl.classList.add('dragging');
+        });
+        tabEl.addEventListener('dragend', () => {
+            tabEl.classList.remove('dragging');
+        });
+
+        collapsedTabsContainer.appendChild(tabEl);
+        panel.remove();
+        cleanupEmptyRows();
+    }
+
+    function restoreCollapsedTab(tabId) {
+        const tabIndex = collapsedTabsData.findIndex(t => t.id === tabId);
+        if (tabIndex === -1) return;
+
+        const tabData = collapsedTabsData[tabIndex];
+
+        const newPanel = createPanelElement(tabData.type);
+
+        if (tabData.title) {
+            const titleSpan = newPanel.querySelector('.panel-title span');
+            if (titleSpan) titleSpan.textContent = tabData.title;
+        }
+
+        if (tabData.type === 'editor' && tabData.savedEditorState) {
+            const editor = newPanel.querySelector('.editor-area');
+            if (editor) {
+                editorStates.set(editor, tabData.savedEditorState);
+                
+                if (tabData.savedEditorState.dirty) {
+                    const dot = newPanel.querySelector('.dirty-dot');
+                    if (dot) dot.classList.add('visible');
+                }
+
+                if (tabData.savedEditorState.path) {
+                    const safePath = btoa(unescape(encodeURIComponent(tabData.savedEditorState.path)));
+                    if (typeof webui !== 'undefined') webui.read_file(safePath);
+                }
+            }
+        }
+
+        let row = workspace.lastElementChild;
+        if (!row || row.children.length >= 2) {
+            row = document.createElement('div');
+            row.className = 'row';
+            workspace.appendChild(row);
+        }
+        row.appendChild(newPanel);
+
+        collapsedTabsData.splice(tabIndex, 1);
+        const tabEl = collapsedTabsContainer.querySelector(`[data-tab-id="${tabId}"]`);
+        if (tabEl) tabEl.remove();
+    }
+
+    function removeCollapsedTab(tabId, askForSave) {
+        const tabIndex = collapsedTabsData.findIndex(t => t.id === tabId);
+        if (tabIndex === -1) return;
+
+        const tabData = collapsedTabsData[tabIndex];
+
+        const doRemove = () => {
+            collapsedTabsData.splice(tabIndex, 1);
+            const tabEl = collapsedTabsContainer.querySelector(`[data-tab-id="${tabId}"]`);
+            if (tabEl) tabEl.remove();
+        };
+
+        if (tabData.type === 'editor' && tabData.savedEditorState && tabData.savedEditorState.dirty) {
+            let dirtyCount = 0;
+            document.querySelectorAll('.editor-area').forEach(editor => {
+                const state = editorStates.get(editor);
+                if (state && state.dirty) dirtyCount++;
+            });
+
+            collapsedTabsData.forEach(t => {
+                if (t.type === 'editor' && t.savedEditorState && t.savedEditorState.dirty) {
+                    dirtyCount++;
+                }
+            });
+
+            if (dirtyCount > 1) {
+                openSaveModal(null, doRemove);
+            } else {
+                showConfirm(
+                    'Несохранённые изменения',
+                    'Файл имеет несохраненные изменения. Закрыть без сохранения?',
+                    () => { doRemove(); }
+                );
+            }
+        } else {
+            doRemove();
+        }
+    }
+
+    function closePanel(panel) {
+        const type = (() => {
+            if (panel.querySelector('.file-tree')) return 'explorer';
+            if (panel.querySelector('.editor-area')) return 'editor';
+            if (panel.querySelector('.term-container')) return 'terminal';
+            if (panel.querySelector('.graph-container')) return 'graph';
+            if (panel.querySelector('.complexity-container')) return 'complexity';
+            if (panel.querySelector('.console-container')) return 'console';
+            return 'unknown';
+        })();
+
+        const doClose = () => {
+            panel.remove();
+            cleanupEmptyRows();
+        };
+
+        if (type === 'editor') {
+            const editor = panel.querySelector('.editor-area');
+            const state = editorStates.get(editor);
+            
+            if (state && state.dirty) {
+                let dirtyCount = 0;
+                document.querySelectorAll('.editor-area').forEach(e => {
+                    const s = editorStates.get(e);
+                    if (s && s.dirty) dirtyCount++;
+                });
+                collapsedTabsData.forEach(t => {
+                    if (t.type === 'editor' && t.savedEditorState && t.savedEditorState.dirty) dirtyCount++;
+                });
+
+                if (dirtyCount > 1) {
+                    openSaveModal(editor, doClose);
+                } else {
+                    showConfirm(
+                        'Несохранённые изменения',
+                        'Файл имеет несохраненные изменения. Закрыть без сохранения?',
+                        () => { doClose(); }
+                    );
+                }
+            } else {
+                doClose();
+            }
+        } else {
+            doClose();
+        }
+    }
+
+    function cleanupEmptyRows() {
+        const rows = document.querySelectorAll('.row');
+        rows.forEach(row => {
+            if (row.children.length === 0) {
+                row.remove();
+            }
+        });
+    }
+
+    // ==========================================
+    // 8. Создание панели
+    // ==========================================
+    function createPanelElement(type) {
+        const panel = document.createElement('div');
+        panel.className = 'panel';
+        
+        if (type === 'complexity') {
+            panel.classList.add('panel-small');
+        }
+
+        const header = document.createElement('div');
+        header.className = 'panel-header';
+        header.draggable = true;
+
+        const titleContainer = document.createElement('div');
+        titleContainer.className = 'panel-title';
+        
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = 'Panel';
+
+        const dirtyDot = document.createElement('span');
+        dirtyDot.className = 'dirty-dot';
+        dirtyDot.title = 'Есть несохраненные изменения';
+
+        titleContainer.appendChild(headerTitle);
+        titleContainer.appendChild(dirtyDot);
+
+        const controls = document.createElement('div');
+        controls.className = 'panel-controls';
+
+        const collapseBtn = document.createElement('button');
+        collapseBtn.className = 'panel-btn';
+        collapseBtn.innerHTML = '−';
+        collapseBtn.title = 'Свернуть';
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            collapsePanel(panel);
+        });
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'panel-btn close';
+        closeBtn.innerHTML = '×';
+        closeBtn.title = 'Закрыть';
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closePanel(panel);
+        });
+
+        controls.appendChild(collapseBtn);
+        controls.appendChild(closeBtn);
+
+        header.appendChild(titleContainer);
+        header.appendChild(controls);
+        
+        const content = document.createElement('div');
+        content.className = 'panel-content';
+
+        const resizerH = document.createElement('div');
+        resizerH.className = 'resizer resizer-h';
+        makeResizableH(panel, resizerH);
+
+        const resizerV = document.createElement('div');
+        resizerV.className = 'resizer resizer-v';
+        makeResizableV(panel, resizerV);
+
+        panel.appendChild(header);
+        panel.appendChild(content);
+        panel.appendChild(resizerH);
+        panel.appendChild(resizerV);
+
+        panel.addEventListener('mousedown', () => {
+            setActivePanel(panel);
+        });
+
+        // === Наполнение ===
+        if (type === 'explorer') {
+            headerTitle.textContent = 'Explorer';
+            content.innerHTML = '<div class="file-tree">Загрузка файлов...</div>';
+            if (typeof webui !== 'undefined' && webui.get_files) webui.get_files({});
+        } else if (type === 'editor') {
+            editorCounter++;
+            const editorTitle = `Редактор ${editorCounter}`;
+            headerTitle.textContent = `${editorTitle}`;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'editor-wrapper';
+            
+            const gutter = document.createElement('div');
+            gutter.className = 'editor-gutter';
+            
+            const textarea = document.createElement('textarea');
+            textarea.className = 'editor-area';
+            textarea.placeholder = 'Выберите файл в Explorer...';
+            textarea.spellcheck = false;
+
+            wrapper.appendChild(gutter);
+            wrapper.appendChild(textarea);
+            content.appendChild(wrapper);
+
+            updateGutter(textarea, gutter);
+
+            editorStates.set(textarea, { 
+                path: null, 
+                originalContent: '', 
+                dirty: false,
+                editorId: editorCounter,
+                editorTitle: editorTitle
+            });
+
+            textarea.addEventListener('scroll', () => {
+                gutter.scrollTop = textarea.scrollTop;
+            });
+            textarea.addEventListener('focus', () => {
+                selectedEditor = textarea;
+            });
+            textarea.addEventListener('mousedown', () => {
+                selectedEditor = textarea;
+            });
+
+            textarea.addEventListener('input', () => {
+                updateGutter(textarea, gutter);
+
+                const state = editorStates.get(textarea);
+                if (!state) return; 
+
+                const isChanged = (textarea.value !== state.originalContent);
+                state.dirty = isChanged;
+                
+                if (isChanged) {
+                    dirtyDot.classList.add('visible');
+                } else {
+                    dirtyDot.classList.remove('visible');
+                }
+            });
+
+            gutter.addEventListener('dblclick', (e) => {
+                const rect = gutter.getBoundingClientRect();
+                const y = e.clientY - rect.top + gutter.scrollTop - 10;
+                const lineIndex = Math.floor(y / 20);
+                const lines = gutter.querySelectorAll('.gutter-line');
+                
+                if (lines[lineIndex]) {
+                    const dot = lines[lineIndex].querySelector('.breakpoint-dot');
+                    if (dot) {
+                        dot.classList.toggle('active');
+                    }
+                }
+            });
+
+            textarea.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                    e.preventDefault();
+                    
+                    const state = editorStates.get(textarea);
+                    if (!state || !state.path) {
+                        console.warn("Файл не выбран, сохранять некуда.");
+                        return;
+                    }
+
+                    let dirtyCount = 0;
+                    document.querySelectorAll('.editor-area').forEach(ed => {
+                        const s = editorStates.get(ed);
+                        if (s && s.dirty) dirtyCount++;
+                    });
+                    collapsedTabsData.forEach(t => {
+                        if (t.type === 'editor' && t.savedEditorState && t.savedEditorState.dirty) dirtyCount++;
+                    });
+
+                    if (dirtyCount > 1) {
+                        openSaveModal(textarea);
+                    } else {
+                        saveEditor(textarea);
+                    }
+                }
+            });
+
+        } else if (type === 'terminal') {
+            termCounter++;
+            const id = 'term-' + termCounter;
+            headerTitle.textContent = 'Терминал ' + termCounter;
+            const termDiv = document.createElement('div');
+            termDiv.className = 'term-container';
+            termDiv.id = 'pane-' + id;
+            content.appendChild(termDiv);
+
+            const term = new Terminal({
+                fontFamily: 'Cascadia Code, Consolas, monospace',
+                fontSize: 14, cursorBlink: true, convertEol: false,
+                scrollback: 10000,
+                theme: { background: '#0a0807', foreground: '#e8d8c3', cursor: '#d48c4a' },
+            });
+            const fit = new FitAddon.FitAddon();
+            term.loadAddon(fit);
+            term.open(termDiv);
+            setTimeout(() => fit.fit(), 100);
+
+            let resolveTerminalReady;
+            let rejectTerminalReady;
+            const terminalSession = {
+                id,
+                term,
+                ws: null,
+                outputTimer: null,
+                ready: new Promise((resolve, reject) => {
+                    resolveTerminalReady = resolve;
+                    rejectTerminalReady = reject;
+                })
+            };
+            terminalSessions.set(id, terminalSession);
+            activeTerminalId = id;
+
+            setTimeout(() => {
+                const ws = new WebSocket(`ws://127.0.0.1:8086/ws/${id}`);
+                terminalSession.ws = ws;
+                ws.onopen = () => {
+                    term.writeln("Соединение установлено!\r\n");
+                    resolveTerminalReady(terminalSession);
+                };
+                ws.onmessage = (event) => term.write(event.data);
+                ws.onerror = () => {
+                    term.writeln("\r\n\x1b[31mОШИБКА WEB-SOCKET\x1b[0m");
+                    rejectTerminalReady(new Error('Не удалось подключить терминал.'));
+                };
+                ws.onclose = () => {
+                    if (!javaStdinActive && terminalSessions.get(id) === terminalSession) {
+                        terminalSessions.delete(id);
+                    }
+                };
+                term.onData(data => {
+                    if (javaStdinActive && activeTerminalId === id) {
+                        sendJavaStdin(terminalSession, data);
+                    } else if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(data);
+                    }
+                });
+            }, 500);
+
+            window.addEventListener('resize', () => fit.fit());
+            panel.addEventListener('mouseup', () => fit.fit());
+
+        } else if (type === 'graph') {
+            headerTitle.textContent = 'Граф';
+            content.innerHTML = '<div class="graph-container"></div>';
+            
+            const parseBtn = document.createElement('button');
+            parseBtn.textContent = 'Из кода';
+            parseBtn.style.cssText = 'margin-left:10px; padding:2px 6px; font-size:10px; cursor:pointer; background:transparent; border:1px solid var(--manti-accent); color:var(--manti-accent); border-radius:4px;';
+            parseBtn.onclick = () => requestGraphForCurrentEditor();
+            header.appendChild(parseBtn);
+
+            const optimizeBtn = document.createElement('button');
+            optimizeBtn.textContent = 'Оптимизировать';
+            optimizeBtn.style.cssText = 'margin-left:6px; padding:2px 6px; font-size:10px; cursor:pointer; background:transparent; border:1px solid #90ee90; color:#90ee90; border-radius:4px;';
+            optimizeBtn.onclick = () => {
+                const editors = document.querySelectorAll('.editor-area');
+                if (editors.length === 0) {
+                    showInfo('Нет редакторов', 'Откройте файл в панели Explorer, чтобы использовать эту функцию.');
+                    return;
+                }
+                const code = editors[editors.length - 1].value;
+                if (!code.trim()) {
+                    showInfo('Редактор пуст', 'В редакторе нет кода. Откройте файл или напишите код.');
+                    return;
+                }
+
+                pendingOptimize = true;
+                if (!requestGraphForCurrentEditor()) pendingOptimize = false;
+            };
+            header.appendChild(optimizeBtn);
+
+            if (!requestGraphForCurrentEditor(false)) {
+                content.querySelector('.graph-container').textContent =
+                    'Откройте Java-файл в редакторе и нажмите «Из кода».';
+            }
+            
+        } else if (type === 'complexity') {
+            headerTitle.textContent = 'Сложность';
+            content.innerHTML = '<div class="complexity-container">Ожидание анализа...</div>';
+            
+            const analyze = () => {
+                const editors = document.querySelectorAll('.editor-area');
+                if (editors.length === 0) {
+                    content.querySelector('.complexity-container').innerHTML = '<div style="color:orange">Нет открытых редакторов.</div>';
+                    return;
+                }
+                
+                let targetEditor = editors[editors.length - 1];
+                const code = targetEditor.value;
+                
+                if (!code.trim()) {
+                    content.querySelector('.complexity-container').innerHTML = '<div style="color:gray">Редактор пуст.</div>';
+                    return;
+                }
+
+                const b64Code = btoa(unescape(encodeURIComponent(code)));
+                if (typeof webui !== 'undefined' && webui.analyze_complexity) {
+                    webui.analyze_complexity(b64Code);
+                }
+            };
+
+            setTimeout(analyze, 500);
+            
+            const refreshBtn = document.createElement('button');
+            refreshBtn.textContent = 'Обновить';
+            refreshBtn.style.marginLeft = '10px';
+            refreshBtn.style.background = 'transparent';
+            refreshBtn.style.border = '1px solid var(--manti-accent)';
+            refreshBtn.style.borderRadius = '4px';
+            refreshBtn.style.padding = '2px 6px';
+            refreshBtn.style.cursor = 'pointer';
+            refreshBtn.style.color = 'var(--manti-accent)';
+            refreshBtn.style.fontSize = '10px';
+            refreshBtn.onclick = analyze;
+            header.appendChild(refreshBtn);
+        } else if (type === 'console') {
+            headerTitle.textContent = 'Консоль';
+            content.innerHTML = '<div class="console-container"></div>';
+        }
+
+        // ==========================================
+        // DRAG & DROP С СОХРАНЕНИЕМ РАЗМЕРОВ
+        // ==========================================
+        header.addEventListener('dragstart', (e) => {
+            dragSrcPanel = panel;
+            dragSrcStyles = {
+                width: panel.style.width,
+                height: panel.style.height,
+                flex: panel.style.flex
+            };
+            
+            panel.classList.add('dragging');
+            e.dataTransfer.setData('application/x-panel-swap', '1');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        header.addEventListener('dragend', () => {
+            panel.classList.remove('dragging');
+            dragSrcPanel = null;
+            dragSrcStyles = null;
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('drag-over'));
+        });
+
+        panel.addEventListener('dragover', (e) => {
+            if (dragSrcPanel && dragSrcPanel !== panel) {
+                e.preventDefault();
+                e.stopPropagation();
+                panel.classList.add('drag-over');
+            }
+        });
+
+        panel.addEventListener('dragleave', (e) => {
+            panel.classList.remove('drag-over');
+        });
+
+        panel.addEventListener('drop', (e) => {
+            if (dragSrcPanel && dragSrcPanel !== panel) {
+                e.preventDefault();
+                e.stopPropagation();
+                panel.classList.remove('drag-over');
+                
+                swapPanels(dragSrcPanel, panel, dragSrcStyles);
+                
+                dragSrcPanel = null;
+                dragSrcStyles = null;
+            }
+        });
+
+        return panel;
+    }
+
+    function swapPanels(panelA, panelB, stylesA) {
+        const parentA = panelA.parentNode;
+        const parentB = panelB.parentNode;
+
+        const stylesB = {
+            width: panelB.style.width,
+            height: panelB.style.height,
+            flex: panelB.style.flex
+        };
+
+        if (parentA === parentB) {
+            const marker = document.createElement('span');
+            parentA.insertBefore(marker, panelA);
+            parentA.insertBefore(panelA, panelB);
+            parentA.insertBefore(panelB, marker);
+            marker.remove();
+        } else {
+            const markerA = document.createElement('span');
+            const markerB = document.createElement('span');
+            parentA.insertBefore(markerA, panelA);
+            parentB.insertBefore(markerB, panelB);
+            parentA.insertBefore(panelB, markerA);
+            parentB.insertBefore(panelA, markerB);
+            markerA.remove();
+            markerB.remove();
+        }
+
+        if (stylesA) {
+            panelB.style.width = stylesA.width;
+            panelB.style.height = stylesA.height;
+            panelB.style.flex = stylesA.flex;
+        } else {
+            panelB.style.width = '';
+            panelB.style.height = '';
+            panelB.style.flex = '';
+        }
+
+        if (stylesB) {
+            panelA.style.width = stylesB.width;
+            panelA.style.height = stylesB.height;
+            panelA.style.flex = stylesB.flex;
+        } else {
+            panelA.style.width = '';
+            panelA.style.height = '';
+            panelA.style.flex = '';
+        }
+
+        window.dispatchEvent(new Event('resize'));
+    }
+
+    function updateGutter(textarea, gutter) {
+        const text = textarea.value;
+        const linesCount = text.split('\n').length;
+        
+        const activeBreakpoints = [];
+        const currentLines = gutter.querySelectorAll('.gutter-line');
+        currentLines.forEach((line, index) => {
+            const dot = line.querySelector('.breakpoint-dot');
+            if (dot && dot.classList.contains('active')) {
+                activeBreakpoints.push(index);
+            }
+        });
+
+        gutter.innerHTML = '';
+        
+        for (let i = 0; i < linesCount; i++) {
+            const lineDiv = document.createElement('div');
+            lineDiv.className = 'gutter-line';
+            
+            const dot = document.createElement('div');
+            dot.className = 'breakpoint-dot';
+            if (activeBreakpoints.includes(i)) {
+                dot.classList.add('active');
+            }
+            
+            lineDiv.appendChild(dot);
+            lineDiv.appendChild(document.createTextNode(i + 1));
+            
+            gutter.appendChild(lineDiv);
+        }
+        
+        gutter.scrollTop = textarea.scrollTop;
+    }
+
+    function makeResizableH(panel, resizer) {
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            resizer.classList.add('active');
+            const startX = e.clientX;
+            const startWidth = panel.offsetWidth;
+
+            const onMouseMove = (ev) => {
+                const dx = ev.clientX - startX;
+                panel.style.flex = 'none';
+                panel.style.width = Math.max(150, startWidth + dx) + 'px';
+            };
+
+            const onMouseUp = () => {
+                resizer.classList.remove('active');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
+
+    function makeResizableV(panel, resizer) {
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            resizer.classList.add('active');
+            const startY = e.clientY;
+            const startHeight = panel.offsetHeight;
+
+            const onMouseMove = (ev) => {
+                const dy = ev.clientY - startY;
+                panel.style.flex = 'none';
+                panel.style.height = Math.max(100, startHeight + dy) + 'px';
+            };
+
+            const onMouseUp = () => {
+                resizer.classList.remove('active');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
+
+    function startRun() {
+        startJava('run');
+    }
+
+    function startDebug() {
+        startJava('debug');
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,158 @@
+{
+  "nodes": [
+    {
+      "id": "0",
+      "label": "TestGraph",
+      "group": "class",
+      "shape": "box",
+      "color": {
+        "background": "#3a2c24",
+        "border": "#d48c4a"
+      }
+    },
+    {
+      "id": "1",
+      "label": "Helper",
+      "group": "class",
+      "shape": "box",
+      "color": {
+        "background": "#3a2c24",
+        "border": "#d48c4a"
+      }
+    },
+    {
+      "id": "2",
+      "label": "TestGraph.startProcess()",
+      "group": "method",
+      "shape": "ellipse",
+      "color": {
+        "background": "#222222",
+        "border": "#777777"
+      },
+      "note": "Уже оптимально"
+    },
+    {
+      "id": "3",
+      "label": "TestGraph.calculate()",
+      "group": "method",
+      "shape": "ellipse",
+      "color": {
+        "background": "#222222",
+        "border": "#777777"
+      },
+      "note": "Уже оптимально"
+    },
+    {
+      "id": "4",
+      "label": "TestGraph.processLargeArray()",
+      "group": "method",
+      "shape": "ellipse",
+      "color": {
+        "background": "#222222",
+        "border": "#777777"
+      },
+      "note": "Цикл можно разбить на три отдельных цикла для суммы, максимума и подсчёта чётных (loop fission), что улучшит векторизацию и кэширование."
+    },
+    {
+      "id": "5",
+      "label": "Helper.doWork()",
+      "group": "method",
+      "shape": "ellipse",
+      "color": {
+        "background": "#222222",
+        "border": "#777777"
+      },
+      "note": "Уже оптимально"
+    },
+    {
+      "id": "6",
+      "label": "Helper.doMoreWork()",
+      "group": "method",
+      "shape": "ellipse",
+      "color": {
+        "background": "#222222",
+        "border": "#777777"
+      },
+      "note": "Уже оптимально"
+    },
+    {
+      "id": "7",
+      "label": "Helper.handleLargeResult()",
+      "group": "method",
+      "shape": "ellipse",
+      "color": {
+        "background": "#222222",
+        "border": "#777777"
+      },
+      "note": "Уже оптимально"
+    }
+  ],
+  "edges": [
+    {
+      "from": "0",
+      "to": "2",
+      "label": "contains",
+      "arrows": "to",
+      "color": "#555555"
+    },
+    {
+      "from": "0",
+      "to": "3",
+      "label": "contains",
+      "arrows": "to",
+      "color": "#555555"
+    },
+    {
+      "from": "0",
+      "to": "4",
+      "label": "contains",
+      "arrows": "to",
+      "color": "#555555"
+    },
+    {
+      "from": "1",
+      "to": "5",
+      "label": "contains",
+      "arrows": "to",
+      "color": "#555555"
+    },
+    {
+      "from": "1",
+      "to": "6",
+      "label": "contains",
+      "arrows": "to",
+      "color": "#555555"
+    },
+    {
+      "from": "1",
+      "to": "7",
+      "label": "contains",
+      "arrows": "to",
+      "color": "#555555"
+    },
+    {
+      "from": "2",
+      "to": "5",
+      "label": "calls",
+      "arrows": "to",
+      "color": "#d48c4a",
+      "dashes": true
+    },
+    {
+      "from": "2",
+      "to": "6",
+      "label": "calls",
+      "arrows": "to",
+      "color": "#d48c4a",
+      "dashes": true
+    },
+    {
+      "from": "3",
+      "to": "7",
+      "label": "calls",
+      "arrows": "to",
+      "color": "#d48c4a",
+      "dashes": true
+    }
+  ]
+}

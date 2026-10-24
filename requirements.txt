@@ -1,0 +1,9 @@
+webui2
+fastapi
+uvicorn[standard]
+websockets
+javalang
+pywinpty
+requests
+python-dotenv
+pyinstaller
