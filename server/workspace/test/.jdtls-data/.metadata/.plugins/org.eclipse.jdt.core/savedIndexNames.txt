@@ -1,0 +1,3 @@
+INDEX VERSION 1.134+C:\Users\eliza\Downloads\ide\server\workspace\test\.jdtls-data\.metadata\.plugins\org.eclipse.jdt.core
+2238567309.index
+3528632484.index
