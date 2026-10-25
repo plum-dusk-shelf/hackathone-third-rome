@@ -1,5 +1,7 @@
 # IDE на WebUI — Манты Edition
-![Манты IDE](favicon.png)
+<p align="center">
+  <img src="favicon.png" width="33%" alt="Манты IDE">
+</p>
 Кастомная веб-IDE с встроенным терминалом, просмотром файлов, визуализацией графа Java-кода, анализом сложности и AI-оптимизацией через OpenRouter.
 
 ---
