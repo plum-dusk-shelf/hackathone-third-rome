@@ -21,6 +21,11 @@
 			<location>c:/Users/eliza/Downloads/ide/ide/server/workspace/test/BigMess.java</location>
 		</link>
 		<link>
+			<name>src/HeavyComputation.java</name>
+			<type>1</type>
+			<location>c:/hackathone-third-rome/server/workspace/test2/HeavyComputation.java</location>
+		</link>
+		<link>
 			<name>src/com/example/mess/TestGraph2.java</name>
 			<type>1</type>
 			<location>c:/Users/eliza/Downloads/ide/ide/TestGraph2.java</location>

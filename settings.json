@@ -1,0 +1,17 @@
+{
+  "syntax_colors": {
+    "string": "#a8d69a",
+    "comment": "#6b6b6b",
+    "keyword": "#8b5a2b",
+    "class": "#d48c4a",
+    "variable": "#ecd9b8",
+    "number": "#e0b87a",
+    "annotation": "#c58cd4",
+    "operator": "#bbbbbb"
+  },
+  "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "shortcuts": {
+    "run": "Ctrl+F5",
+    "debug": "Ctrl+Shift+F5"
+  }
+}

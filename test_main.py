@@ -16,7 +16,9 @@ from webui import webui
 # Импортируем FastAPI приложение и парсер
 from fastapi_server import app as fastapi_app
 from parser import parse_java_to_graph
+from graph_optimizer_llm import analyze_method_complexity as request_method_complexity
 from graph_optimizer_llm import optimize_java_code
+from settings import load_settings, save_settings
 
 # PROJECT_DIR — папка, где лежит этот скрипт (тут же index.html, syntax.js)
 PROJECT_DIR = (
@@ -67,6 +69,31 @@ def log(message: str):
         safe = (message.replace("\\", "\\\\").replace("'", "\\'")
                        .replace('"', '\\"').replace("\n", "\\n"))
         win.run(f"appendLog('{safe}');")
+
+
+def _send_settings_result(callback, result):
+    encoded = base64.b64encode(
+        json.dumps(result, ensure_ascii=False).encode("utf-8")
+    ).decode("ascii")
+    if win and win.is_shown():
+        win.run(f"{callback}('{encoded}');")
+
+
+def get_settings(_event=None):
+    try:
+        _send_settings_result("onSettingsLoaded", load_settings())
+    except (OSError, ValueError) as ex:
+        _send_settings_result("onSettingsLoaded", {"error": str(ex)})
+
+
+def save_user_settings(event):
+    try:
+        settings_b64 = event.get_string() if hasattr(event, "get_string") else str(event)
+        settings_data = json.loads(base64.b64decode(settings_b64).decode("utf-8"))
+        saved_settings = save_settings(settings_data)
+        _send_settings_result("onSettingsSaved", {"settings": saved_settings})
+    except (OSError, ValueError, json.JSONDecodeError) as ex:
+        _send_settings_result("onSettingsSaved", {"error": str(ex)})
 
 
 def get_files(_event):
@@ -252,79 +279,34 @@ def optimize_graph(e):
 
 
 def analyze_complexity(e):
+    request_id = None
     try:
         if hasattr(e, 'get_string'):
-            b64_code = e.get_string()
+            payload_b64 = e.get_string()
         else:
-            b64_code = str(e)
-            
-        code = base64.b64decode(b64_code).decode('utf-8')
-        
-        lines = code.split('\n')
-        max_depth = 0
-        current_depth = 0
-        indent_stack = []
-        
-        for line in lines:
-            stripped = line.strip()
-            if not stripped or stripped.startswith('#'):
-                continue
-                
-            indent = len(line) - len(line.lstrip())
-            is_loop = bool(re.match(r'^(for|while)\b', stripped))
-            is_if = bool(re.match(r'^if\b', stripped))
-            
-            if is_loop:
-                while indent_stack and indent_stack[-1] >= indent:
-                    indent_stack.pop()
-                    current_depth -= 1
-                
-                indent_stack.append(indent)
-                current_depth += 1
-                max_depth = max(max_depth, current_depth)
-            elif is_if:
-                pass
+            payload_b64 = str(e)
+        payload = json.loads(base64.b64decode(payload_b64).decode("utf-8"))
+        java_code = payload.get("code", "")
+        graph_json = payload.get("graph", {})
+        node_id = payload.get("node_id")
+        request_id = payload.get("request_id")
+        if not isinstance(java_code, str) or not java_code.strip():
+            raise ValueError("Исходный код Java не передан.")
+        if node_id is None:
+            raise ValueError("Не выбрана вершина метода.")
 
-        if max_depth == 0:
-            if re.search(r'\bdef\s+(\w+).*?\1\s*\(', code, re.DOTALL):
-                 complexity = "O(log n)"
-                 desc = "Возможна рекурсия или бинарный поиск."
-            else:
-                complexity = "O(1)"
-                desc = "Константная сложность. Нет циклов."
-        elif max_depth == 1:
-            complexity = "O(n)"
-            desc = "Линейная сложность. Один уровень циклов."
-        elif max_depth == 2:
-            complexity = "O(n^2)"
-            desc = "Квадратичная сложность. Два вложенных цикла."
-        elif max_depth == 3:
-            complexity = "O(n^3)"
-            desc = "Кубическая сложность. Три вложенных цикла."
-        else:
-            complexity = f"O(n^{max_depth})"
-            desc = f"Полиномиальная сложность. {max_depth} уровней вложенности."
+        result = request_method_complexity(java_code, graph_json, str(node_id), log=log)
+        result["request_id"] = request_id
+        if not result.get("success"):
+            log(f"[complexity] Ошибка: {result.get('error', 'Неизвестная ошибка')}")
 
-        if re.search(r'while\s+.*?//\s*2', code) or re.search(r'while\s+.*?>>\s*1', code):
-            complexity = "O(log n)"
-            desc = "Логарифмическая сложность (деление пополам)."
-
-        result = {
-            "complexity": complexity,
-            "description": desc,
-            "max_depth": max_depth
-        }
-        
-        json_data = json.dumps(result)
-        b64_str = base64.b64encode(json_data.encode('utf-8')).decode('ascii')
-        
-        if win and win.is_shown():
-            win.run(f"onComplexityAnalyzed('{b64_str}');")
-            
+        _send_settings_result("onComplexityAnalyzed", result)
     except Exception as ex:
-        b64_err = base64.b64encode(json.dumps({'error': str(ex)}).encode('utf-8')).decode('ascii')
-        if win and win.is_shown():
-            win.run(f"onComplexityAnalyzed('{b64_err}');")
+        _send_settings_result("onComplexityAnalyzed", {
+            "success": False,
+            "error": str(ex),
+            "request_id": request_id,
+        })
 
 
 def start_fastapi_server():
@@ -373,6 +355,8 @@ def main():
     win.bind("parse_java", parse_java)
     win.bind("optimize_graph", optimize_graph)
     win.bind("analyze_complexity", analyze_complexity)
+    win.bind("get_settings", get_settings)
+    win.bind("save_user_settings", save_user_settings)
     
 
     index_path = RESOURCE_DIR / "index.html"

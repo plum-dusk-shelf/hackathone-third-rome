@@ -29,6 +29,14 @@
 
             --terminal-bg: #0a0807;
             --sidebar-width: 200px;
+            --syntax-color-string: #a8d69a;
+            --syntax-color-comment: #6b6b6b;
+            --syntax-color-keyword: #8b5a2b;
+            --syntax-color-class: #d48c4a;
+            --syntax-color-variable: #ecd9b8;
+            --syntax-color-number: #e0b87a;
+            --syntax-color-annotation: #c58cd4;
+            --syntax-color-operator: #bbbbbb;
         }
 
         * { box-sizing: border-box; }
@@ -275,6 +283,20 @@
             color: #1a1512; 
             font-weight: bold; 
         }
+
+        .settings-button {
+            margin-top: auto;
+            min-width: 180px;
+            padding: 9px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-header);
+            color: var(--manti-dough);
+            cursor: pointer;
+            text-align: left;
+            font-size: 13px;
+        }
+        .settings-button:hover { border-color: var(--manti-accent); color: var(--manti-accent); }
 
         #workspace {
             flex: 1; display: flex; flex-direction: column;
@@ -540,14 +562,14 @@
         }
         .editor-area::placeholder { color: var(--text-dim); }
 
-        .tok-string   { color: #a8d69a; }
-        .tok-comment  { color: #6b6b6b; font-style: italic; }
-        .tok-keyword  { color: var(--manti-brown); font-weight: 600; }
-        .tok-class    { color: var(--manti-accent); font-weight: 600; }
-        .tok-variable { color: #ecd9b8; }
-        .tok-number   { color: #e0b87a; }
-        .tok-annotation { color: #c58cd4; }
-        .tok-operator { color: #bbbbbb; }
+        .tok-string   { color: var(--syntax-color-string); }
+        .tok-comment  { color: var(--syntax-color-comment); font-style: italic; }
+        .tok-keyword  { color: var(--syntax-color-keyword); font-weight: 600; }
+        .tok-class    { color: var(--syntax-color-class); font-weight: 600; }
+        .tok-variable { color: var(--syntax-color-variable); }
+        .tok-number   { color: var(--syntax-color-number); }
+        .tok-annotation { color: var(--syntax-color-annotation); }
+        .tok-operator { color: var(--syntax-color-operator); }
 
         .term-container { width: 100%; height: 100%; padding: 6px; background: var(--terminal-bg); }
         .xterm { height: 100%; }
@@ -598,6 +620,53 @@
         }
         .modal-window h3 { margin-top: 0; margin-bottom: 15px; color: var(--manti-brown); font-size: 16px; }
         .modal-window p { font-size: 13px; margin-bottom: 15px; line-height: 1.4; color: #1a1512; }
+
+        .settings-window {
+            width: min(540px, calc(100vw - 24px));
+            max-height: 90vh;
+            overflow: auto;
+        }
+        .settings-section {
+            margin: 16px 0;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(26, 21, 18, 0.16);
+        }
+        .settings-section h4 { margin: 0 0 10px; color: var(--manti-brown); }
+        .settings-field {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .settings-field input[type="color"] {
+            width: 48px;
+            height: 30px;
+            padding: 2px;
+            border: 1px solid var(--manti-brown);
+            border-radius: 5px;
+            background: transparent;
+            cursor: pointer;
+        }
+        .settings-text-input {
+            width: min(280px, 60%);
+            padding: 7px 9px;
+            border: 1px solid var(--manti-brown);
+            border-radius: 5px;
+            background: #fffaf4;
+            color: #1a1512;
+        }
+        .shortcut-capture {
+            min-width: 150px;
+            padding: 6px 9px;
+            border: 1px solid var(--manti-brown);
+            border-radius: 5px;
+            background: #fffaf4;
+            color: #1a1512;
+            cursor: pointer;
+        }
+        .settings-hint { margin: 8px 0 0 !important; color: #5b5149 !important; }
 
         .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
         .modal-btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: background 0.2s; }
@@ -655,6 +724,7 @@
             <div class="sidebar-item" draggable="true" data-type="graph">Граф</div>
             <div class="sidebar-item" draggable="true" data-type="complexity">Сложность (Big O)</div>
             <div class="sidebar-item" draggable="true" data-type="console">Консоль</div>
+            <button class="settings-button" type="button" onclick="openSettings()" title="Настройки IDE">⚙ Настройки</button>
         </div>
 
         <div id="workspace"></div>
@@ -669,6 +739,47 @@
     <div id="variables-frames"></div>
     <div id="variables-content">Переменные появятся при остановке отладчика.</div>
 </section>
+
+<div class="modal-overlay" id="settings-overlay" aria-hidden="true">
+    <div class="modal-window settings-window" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <h3 id="settings-title">Настройки IDE</h3>
+        <section class="settings-section">
+            <h4>Подсветка кода</h4>
+            <label class="settings-field">Строки <input type="color" data-syntax-color="string"></label>
+            <label class="settings-field">Комментарии <input type="color" data-syntax-color="comment"></label>
+            <label class="settings-field">Ключевые слова <input type="color" data-syntax-color="keyword"></label>
+            <label class="settings-field">Классы и типы <input type="color" data-syntax-color="class"></label>
+            <label class="settings-field">Переменные и идентификаторы <input type="color" data-syntax-color="variable"></label>
+            <label class="settings-field">Числа <input type="color" data-syntax-color="number"></label>
+            <label class="settings-field">Аннотации <input type="color" data-syntax-color="annotation"></label>
+            <label class="settings-field">Операторы <input type="color" data-syntax-color="operator"></label>
+        </section>
+        <section class="settings-section">
+            <h4>ИИ-модель</h4>
+            <label class="settings-field" for="settings-model">
+                Название модели
+                <input class="settings-text-input" id="settings-model" type="text" maxlength="200">
+            </label>
+            <p class="settings-hint">Идентификатор модели OpenRouter, используемый при оптимизации графа.</p>
+        </section>
+        <section class="settings-section">
+            <h4>Горячие клавиши</h4>
+            <div class="settings-field">
+                <span>Запуск программы</span>
+                <button class="shortcut-capture" type="button" data-shortcut="run">Ctrl+F5</button>
+            </div>
+            <div class="settings-field">
+                <span>Отладка программы</span>
+                <button class="shortcut-capture" type="button" data-shortcut="debug">Ctrl+Shift+F5</button>
+            </div>
+            <p class="settings-hint">Нажмите кнопку и затем нужное сочетание клавиш.</p>
+        </section>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" type="button" onclick="closeSettings()">Отмена</button>
+            <button class="modal-btn modal-btn-save-current" type="button" onclick="saveSettingsFromDialog()">Сохранить</button>
+        </div>
+    </div>
+</div>
 
 <div class="modal-overlay" id="save-modal">
     <div class="modal-window">
@@ -704,6 +815,9 @@
     // ==========================================
     const editorStates = new WeakMap(); 
     const graphStates = new WeakMap();
+    let userSettings = null;
+    let complexityRequestCounter = 0;
+    let lastComplexitySelection = null;
 
     let currentActiveEditor = null;
     let modalSelectedEditor = null;
@@ -816,6 +930,163 @@
         const bytes = new Uint8Array(binStr.length);
         for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
         return new TextDecoder('utf-8').decode(bytes);
+    }
+
+    const syntaxColorNames = [
+        'string', 'comment', 'keyword', 'class',
+        'variable', 'number', 'annotation', 'operator'
+    ];
+
+    function applySettings(settings) {
+        userSettings = settings;
+        syntaxColorNames.forEach(name => {
+            document.documentElement.style.setProperty(
+                `--syntax-color-${name}`,
+                settings.syntax_colors[name]
+            );
+        });
+    }
+
+    function renderSettings(settings) {
+        syntaxColorNames.forEach(name => {
+            const input = document.querySelector(`[data-syntax-color="${name}"]`);
+            if (input) input.value = settings.syntax_colors[name];
+        });
+        document.getElementById('settings-model').value = settings.model;
+        document.querySelectorAll('.shortcut-capture').forEach(button => {
+            const shortcut = settings.shortcuts[button.dataset.shortcut];
+            button.dataset.value = shortcut;
+            button.textContent = shortcut;
+            delete button.dataset.recording;
+        });
+    }
+
+    function openSettings() {
+        document.getElementById('settings-overlay').classList.add('active');
+        document.getElementById('settings-overlay').setAttribute('aria-hidden', 'false');
+        if (typeof webui === 'undefined' || !webui.get_settings) {
+            showInfo('Настройки недоступны', 'Не удалось подключиться к приложению для чтения settings.json.');
+            return;
+        }
+        webui.get_settings({});
+    }
+
+    function closeSettings() {
+        document.getElementById('settings-overlay').classList.remove('active');
+        document.getElementById('settings-overlay').setAttribute('aria-hidden', 'true');
+        document.querySelectorAll('.shortcut-capture').forEach(button => {
+            delete button.dataset.recording;
+            if (button.dataset.value) button.textContent = button.dataset.value;
+        });
+    }
+
+    function shortcutFromEvent(event) {
+        const parts = [];
+        if (event.ctrlKey) parts.push('Ctrl');
+        if (event.altKey) parts.push('Alt');
+        if (event.shiftKey) parts.push('Shift');
+        if (event.metaKey) parts.push('Meta');
+        const key = event.key;
+        if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) return null;
+        parts.push(key.length === 1 ? key.toUpperCase() : key);
+        return parts.join('+');
+    }
+
+    document.querySelectorAll('.shortcut-capture').forEach(button => {
+        button.addEventListener('click', () => {
+            button.dataset.recording = 'true';
+            button.textContent = 'Нажмите клавиши…';
+            button.focus();
+        });
+    });
+
+    document.addEventListener('keydown', event => {
+        const captureButton = event.target.closest('.shortcut-capture');
+        if (captureButton && captureButton.dataset.recording) {
+            const shortcut = shortcutFromEvent(event);
+            if (!shortcut) {
+                event.preventDefault();
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            captureButton.dataset.value = shortcut;
+            captureButton.textContent = shortcut;
+            delete captureButton.dataset.recording;
+            return;
+        }
+
+        if (document.getElementById('settings-overlay').classList.contains('active')) return;
+        if (!userSettings) return;
+
+        const shortcut = shortcutFromEvent(event);
+        if (!shortcut) return;
+        if (shortcut === userSettings.shortcuts.run) {
+            event.preventDefault();
+            startRun();
+        } else if (shortcut === userSettings.shortcuts.debug) {
+            event.preventDefault();
+            startDebug();
+        }
+    });
+
+    window.onSettingsLoaded = encodedSettings => {
+        try {
+            const settings = JSON.parse(decodeBase64(encodedSettings));
+            if (settings.error) {
+                showInfo('Не удалось загрузить настройки', settings.error);
+                return;
+            }
+            applySettings(settings);
+            renderSettings(settings);
+        } catch (error) {
+            showInfo('Не удалось загрузить настройки', error.message);
+        }
+    };
+
+    window.onSettingsSaved = encodedResult => {
+        try {
+            const result = JSON.parse(decodeBase64(encodedResult));
+            if (result.error) {
+                showInfo('Не удалось сохранить настройки', result.error);
+                return;
+            }
+            applySettings(result.settings);
+            closeSettings();
+            showInfo('Настройки сохранены', 'Изменения записаны в settings.json.');
+        } catch (error) {
+            showInfo('Не удалось сохранить настройки', error.message);
+        }
+    };
+
+    function saveSettingsFromDialog() {
+        if (typeof webui === 'undefined' || !webui.save_user_settings) {
+            showInfo('Настройки недоступны', 'Не удалось подключиться к приложению для сохранения settings.json.');
+            return;
+        }
+
+        const settings = {
+            syntax_colors: {},
+            model: document.getElementById('settings-model').value.trim(),
+            shortcuts: {}
+        };
+        syntaxColorNames.forEach(name => {
+            settings.syntax_colors[name] = document.querySelector(`[data-syntax-color="${name}"]`).value;
+        });
+        document.querySelectorAll('.shortcut-capture').forEach(button => {
+            settings.shortcuts[button.dataset.shortcut] = button.dataset.value || '';
+        });
+        if (!settings.model) {
+            showInfo('Некорректная модель', 'Укажите название модели OpenRouter.');
+            return;
+        }
+        if (settings.shortcuts.run.toLowerCase() === settings.shortcuts.debug.toLowerCase()) {
+            showInfo('Конфликт горячих клавиш', 'Для запуска и отладки выберите разные сочетания.');
+            return;
+        }
+
+        const encodedSettings = btoa(unescape(encodeURIComponent(JSON.stringify(settings))));
+        webui.save_user_settings(encodedSettings);
     }
 
     function ensureConsolePanel() {
@@ -1682,6 +1953,62 @@
         } catch(e) { console.error(e); }
     };
 
+    function setComplexityMessage(message) {
+        document.querySelectorAll('.complexity-container').forEach(container => {
+            container.textContent = message;
+        });
+    }
+
+    function requestMethodComplexity(graphData, nodeId, code) {
+        const selectedNode = graphData.nodes.find(node => String(node.id) === String(nodeId));
+        if (!selectedNode || selectedNode.group !== 'method') return;
+        if (!code || !code.trim()) {
+            setComplexityMessage('Не удалось получить исходный код для выбранного метода.');
+            return;
+        }
+        if (typeof webui === 'undefined' || !webui.analyze_complexity) {
+            setComplexityMessage('Сервис ИИ-оценки недоступен.');
+            return;
+        }
+
+        const requestId = ++complexityRequestCounter;
+        lastComplexitySelection = {
+            graph: graphData,
+            nodeId: selectedNode.id,
+            code
+        };
+        setComplexityMessage(`Анализ метода ${selectedNode.label} с помощью ИИ…`);
+        const payload = JSON.stringify({
+            request_id: requestId,
+            node_id: selectedNode.id,
+            code,
+            graph: graphData
+        });
+        webui.analyze_complexity(btoa(unescape(encodeURIComponent(payload))));
+    }
+
+    function renderGraph(container, graphData, graphState) {
+        const network = new vis.Network(container, {
+            nodes: new vis.DataSet(graphData.nodes),
+            edges: new vis.DataSet(graphData.edges)
+        }, {
+            nodes: { borderWidth: 2, color: { background: '#222222', border: '#d48c4a' }, font: { color: '#f5e6d3' } },
+            edges: { color: '#777777', smooth: true },
+            physics: { enabled: true }
+        });
+        graphState.graphData = graphData;
+        network.on('click', params => {
+            if (!params.nodes.length) return;
+            const selectedNode = graphData.nodes.find(node => String(node.id) === String(params.nodes[0]));
+            if (!selectedNode) return;
+            if (selectedNode.group !== 'method') {
+                setComplexityMessage('Выберите вершину метода, чтобы оценить его сложность.');
+                return;
+            }
+            requestMethodComplexity(graphData, selectedNode.id, graphState.parsingCode);
+        });
+    }
+
     // ==========================================
     // onGraphLoaded — рисует граф и запускает оптимизацию,
     // если она была запрошена
@@ -1720,16 +2047,8 @@
                     return;
                 }
 
-                new vis.Network(container, {
-                    nodes: new vis.DataSet(data.nodes),
-                    edges: new vis.DataSet(data.edges)
-                }, {
-                    nodes: { borderWidth: 2, color: { background: '#222222', border: '#d48c4a' }, font: { color: '#f5e6d3' } },
-                    edges: { color: '#777777', smooth: true },
-                    physics: { enabled: true }
-                });
-
                 gs.pendingPath = null;
+                renderGraph(container, data, gs);
                 graphStates.set(container, gs);
             });
 
@@ -1780,18 +2099,33 @@
     window.onComplexityAnalyzed = function(b64Str) {
         try {
             const data = JSON.parse(decodeBase64(b64Str));
-            
+            if (data.request_id !== complexityRequestCounter) return;
             document.querySelectorAll('.complexity-container').forEach(container => {
-                if (data.error) {
-                    container.innerHTML = `<div style="color:red">Ошибка: ${data.error}</div>`;
+                if (!data.success) {
+                    container.textContent = `Ошибка анализа: ${data.error || 'неизвестная ошибка'}`;
                     return;
                 }
 
-                container.innerHTML = `
-                    <div class="complexity-title">${data.complexity}</div>
-                    <div class="complexity-desc">${data.description}</div>
-                    <div class="complexity-badge">Макс. вложенность: ${data.max_depth}</div>
-                `;
+                container.replaceChildren();
+                const title = document.createElement('div');
+                title.className = 'complexity-title';
+                title.textContent = data.current_On;
+                const method = document.createElement('div');
+                method.className = 'complexity-desc';
+                method.textContent = data.method;
+                const detail = document.createElement('div');
+                detail.className = 'complexity-desc';
+                detail.textContent = data.detail_current_On;
+                const badge = document.createElement('div');
+                badge.className = 'complexity-badge';
+                badge.textContent = `${Number(data.prediction_coeff).toFixed(1)}x ожидаемого ускорения`;
+                container.append(method, title, detail, badge);
+                if (data.summary) {
+                    const summary = document.createElement('p');
+                    summary.className = 'complexity-desc';
+                    summary.textContent = data.summary;
+                    container.appendChild(summary);
+                }
             });
         } catch(e) {
             console.error("Ошибка анализа сложности:", e);
@@ -1842,23 +2176,33 @@
             });
 
             // Обновляем графы
+            const previouslySelectedNodeId = lastComplexitySelection?.nodeId;
+            let updatedSelection = null;
             document.querySelectorAll('.graph-container').forEach(container => {
                 container.innerHTML = '';
                 if (data.optimized_graph && data.optimized_graph.nodes) {
-                    new vis.Network(container, {
-                        nodes: new vis.DataSet(data.optimized_graph.nodes),
-                        edges: new vis.DataSet(data.optimized_graph.edges)
-                    }, {
-                        nodes: { borderWidth: 2, color: { background: '#222222', border: '#d48c4a' }, font: { color: '#f5e6d3' } },
-                        edges: { color: '#777777', smooth: true },
-                        physics: { enabled: true }
-                    });
-                    // Обновляем parsingCode, чтобы следующий клик «Оптимизировать» знал актуальный код
                     const gs = graphStates.get(container) || {};
                     gs.parsingCode = data.new_code;
+                    renderGraph(container, data.optimized_graph, gs);
                     graphStates.set(container, gs);
+                    if (previouslySelectedNodeId != null && data.optimized_graph.nodes.some(
+                        node => String(node.id) === String(previouslySelectedNodeId) && node.group === 'method'
+                    )) {
+                        updatedSelection = {
+                            graph: data.optimized_graph,
+                            nodeId: previouslySelectedNodeId,
+                            code: data.new_code
+                        };
+                    }
                 }
             });
+            if (updatedSelection) {
+                requestMethodComplexity(
+                    updatedSelection.graph,
+                    updatedSelection.nodeId,
+                    updatedSelection.code
+                );
+            }
 
             const changed = data.changed_methods || [];
             if (changed.length > 0) {
@@ -1883,18 +2227,8 @@
     };
 
     function refreshAllComplexityPanels() {
-        const editors = document.querySelectorAll('.editor-area');
-        if (editors.length === 0) return;
-
-        let targetEditor = editors[editors.length - 1];
-        const code = targetEditor.value;
-
-        if (!code.trim()) return;
-
-        const b64Code = btoa(unescape(encodeURIComponent(code)));
-        if (typeof webui !== 'undefined' && webui.analyze_complexity) {
-            webui.analyze_complexity(b64Code);
-        }
+        lastComplexitySelection = null;
+        setComplexityMessage('Откройте файл в панели «Граф» и выберите вершину метода для оценки.');
     }
 
     const sidebar = document.getElementById('sidebar');
@@ -2523,30 +2857,17 @@
 
         } else if (type === 'complexity') {
             headerTitle.textContent = 'Сложность';
-            content.innerHTML = '<div class="complexity-container">Ожидание анализа...</div>';
+            content.innerHTML = '<div class="complexity-container">Откройте файл в панели «Граф» и выберите вершину метода для оценки.</div>';
             
             const analyze = () => {
-                const editors = document.querySelectorAll('.editor-area');
-                if (editors.length === 0) {
-                    content.querySelector('.complexity-container').innerHTML = '<div style="color:orange">Нет открытых редакторов.</div>';
-                    return;
-                }
-                
-                let targetEditor = editors[editors.length - 1];
-                const code = targetEditor.value;
-                
-                if (!code.trim()) {
-                    content.querySelector('.complexity-container').innerHTML = '<div style="color:gray">Редактор пуст.</div>';
-                    return;
-                }
-
-                const b64Code = btoa(unescape(encodeURIComponent(code)));
-                if (typeof webui !== 'undefined' && webui.analyze_complexity) {
-                    webui.analyze_complexity(b64Code);
+                if (lastComplexitySelection) {
+                    const selection = lastComplexitySelection;
+                    requestMethodComplexity(selection.graph, selection.nodeId, selection.code);
+                } else {
+                    content.querySelector('.complexity-container').textContent =
+                        'Откройте файл в панели «Граф» и выберите вершину метода для оценки.';
                 }
             };
-
-            setTimeout(analyze, 500);
             
             const refreshBtn = document.createElement('button');
             refreshBtn.textContent = 'Обновить';
@@ -2560,6 +2881,7 @@
             refreshBtn.style.fontSize = '10px';
             refreshBtn.onclick = analyze;
             header.appendChild(refreshBtn);
+            if (lastComplexitySelection) analyze();
         } else if (type === 'console') {
             headerTitle.textContent = 'Консоль';
             content.innerHTML = '<div class="console-container"></div>';
@@ -2799,6 +3121,10 @@
             clearSelection();
         }
     });
+
+    if (typeof webui !== 'undefined' && webui.get_settings) {
+        webui.get_settings({});
+    }
 </script>
 
 </body>

@@ -42,6 +42,8 @@ a = Analysis(
     # ==========================================
     datas=[
         ('index.html', '.'),
+        ('syntax.js', '.'),
+        ('settings.json', '.'),
         
         # Keep the WebUI runtime available beside the executable and in PyInstaller's resource directory.
         (str(webui_dll), '.'),
