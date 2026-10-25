@@ -18,12 +18,15 @@ from fastapi_server import app as fastapi_app
 from parser import parse_java_to_graph
 from graph_optimizer_llm import optimize_java_code
 
+# PROJECT_DIR — папка, где лежит этот скрипт (тут же index.html, syntax.js)
 PROJECT_DIR = (
     Path(sys.executable).resolve().parent
     if getattr(sys, "frozen", False)
     else Path(__file__).resolve().parent
 )
 RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", PROJECT_DIR))
+
+# WORKSPACE — папка проекта, которую выбрал пользователь (через .bat)
 DEBUG_WORKSPACE = Path(
     os.environ.get("WORKSPACE", PROJECT_DIR)
 ).resolve()
@@ -52,8 +55,10 @@ def _port_is_in_use():
 
 
 def resolve_project_path(path: str) -> Path:
+    """Разрешает относительный путь относительно WORKSPACE."""
     file_path = Path(path)
-    return file_path if file_path.is_absolute() else PROJECT_DIR / file_path
+    return file_path if file_path.is_absolute() else DEBUG_WORKSPACE / file_path
+
 
 def log(message: str):
     """Печатает в терминал и отправляет в панель «Консоль» в IDE."""
@@ -63,8 +68,10 @@ def log(message: str):
                        .replace('"', '\\"').replace("\n", "\\n"))
         win.run(f"appendLog('{safe}');")
 
+
 def get_files(_event):
-    base_dir = str(PROJECT_DIR)
+    """Возвращает дерево файлов выбранного проекта (WORKSPACE)."""
+    base_dir = str(DEBUG_WORKSPACE)  # <-- ИСПОЛЬЗУЕМ WORKSPACE
     ignore_dirs = {'.git', '__pycache__', 'node_modules', 'venv', '.venv', '.jdtls-data', '.vscode', 'build', 'dist'}
     
     def scan_dir(current_path, rel_path=""):
@@ -108,6 +115,7 @@ def get_files(_event):
             b64_err = base64.b64encode(json.dumps({'error': str(ex)}).encode('utf-8')).decode('ascii')
             win.run(f"onFilesLoaded('{b64_err}');")
 
+
 def read_file(e):
     try:
         if hasattr(e, 'get_string'):
@@ -135,6 +143,7 @@ def read_file(e):
         if win and win.is_shown():
             win.run(f"onFileContentLoaded('{b64_err}');")
 
+
 def save_file(e):
     try:
         if hasattr(e, 'get_string'):
@@ -155,7 +164,6 @@ def save_file(e):
             f.write(content)
 
         log(f"[save_file] Успешно сохранено")
-        # ВАЖНО: возвращаем relative_path
         resp = json.dumps({'status': 'ok', 'path': relative_path})
         b64_str = base64.b64encode(resp.encode('utf-8')).decode('ascii')
 
@@ -166,6 +174,7 @@ def save_file(e):
         b64_err = base64.b64encode(json.dumps({'error': str(ex)}).encode('utf-8')).decode('ascii')
         if win and win.is_shown():
             win.run(f"onFileSaved('{b64_err}');")
+
 
 def parse_java(e):
     log("[parse_java] Парсим Java-код...")
@@ -194,6 +203,7 @@ def parse_java(e):
         b64_err = base64.b64encode(json.dumps({'error': str(ex)}).encode('utf-8')).decode('ascii')
         if win and win.is_shown():
             win.run(f"onGraphLoaded('{b64_err}');")
+
 
 def optimize_graph(e):
     log("[optimize_graph] Получен запрос на оптимизацию")
@@ -239,6 +249,7 @@ def optimize_graph(e):
         b64_err = base64.b64encode(json.dumps({'error': str(ex)}).encode('utf-8')).decode('ascii')
         if win and win.is_shown():
             win.run(f"onGraphOptimized('{b64_err}');")
+
 
 def analyze_complexity(e):
     try:
@@ -315,6 +326,7 @@ def analyze_complexity(e):
         if win and win.is_shown():
             win.run(f"onComplexityAnalyzed('{b64_err}');")
 
+
 def start_fastapi_server():
     if _debug_server_is_running():
         log("Используется уже запущенный сервер Java/терминала на 127.0.0.1:8086.")
@@ -350,19 +362,6 @@ def start_fastapi_server():
         "Проверьте сообщения выше и повторите запуск."
     )
 
-def parse_java_highlight(e):
-    try:
-        b64_code = e.get_string() if hasattr(e, 'get_string') else str(e)
-        code = base64.b64decode(b64_code).decode('utf-8')
-        tokens = highlight_tokens(code)
-        payload = json.dumps({'code': code, 'tokens': tokens})
-        b64_str = base64.b64encode(payload.encode('utf-8')).decode('ascii')
-        if win and win.is_shown():
-            win.run(f"onJavaHighlightReady('{b64_str}');")
-    except Exception as ex:
-        log(f"[parse_java_highlight] Ошибка: {ex}")
-
-
 
 def main():
     global win
@@ -374,11 +373,22 @@ def main():
     win.bind("parse_java", parse_java)
     win.bind("optimize_graph", optimize_graph)
     win.bind("analyze_complexity", analyze_complexity)
+    
 
     index_path = RESOURCE_DIR / "index.html"
     if not index_path.is_file():
         raise FileNotFoundError(f"Файл интерфейса WebUI не найден: {index_path}")
+    
+    # --- Отладочные принты ---
+    print(f"[DBG] RESOURCE_DIR = {RESOURCE_DIR}", flush=True)
+    print(f"[DBG] index_path   = {index_path}", flush=True)
+    print(f"[DBG] exists       = {index_path.is_file()}", flush=True)
+    print(f"[DBG] parent exists= {index_path.parent.is_dir()}", flush=True)
+    print(f"[DBG] parent access= {os.access(str(index_path.parent), os.R_OK | os.X_OK)}", flush=True)
+    print(f"[DBG] parent list  = {os.listdir(str(index_path.parent))[:5]}", flush=True)
+    print(f"[DBG] DEBUG_WORKSPACE = {DEBUG_WORKSPACE}", flush=True)
 
+    # set_root_folder указывает на папку, где лежит index.html (для веб-сервера WebUI)
     if not win.set_root_folder(str(index_path.parent)):
         raise RuntimeError(f"WebUI не смог открыть каталог ресурсов: {index_path.parent}")
 
@@ -387,6 +397,7 @@ def main():
     if not win.show(index_path.name):
         raise RuntimeError(f"WebUI не смог открыть интерфейс: {index_path}")
     webui.wait()
+
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
