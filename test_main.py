@@ -115,16 +115,18 @@ def read_file(e):
         else:
             safe_path_b64 = str(e)
 
-        path = str(resolve_project_path(base64.b64decode(safe_path_b64).decode('utf-8')))
-        log(f"[read_file] Читаем: {path}")
+        relative_path = base64.b64decode(safe_path_b64).decode('utf-8')
+        absolute_path = str(resolve_project_path(relative_path))
+        log(f"[read_file] Читаем: {absolute_path}")
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(absolute_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        
+
         log(f"[read_file] Прочитано {len(content)} символов")
-        json_data = json.dumps({'content': content, 'path': path})
+        # ВАЖНО: возвращаем relative_path, а не absolute_path!
+        json_data = json.dumps({'content': content, 'path': relative_path})
         b64_str = base64.b64encode(json_data.encode('utf-8')).decode('ascii')
-        
+
         if win and win.is_shown():
             win.run(f"onFileContentLoaded('{b64_str}');")
     except Exception as ex:
@@ -139,23 +141,24 @@ def save_file(e):
             data_str = e.get_string()
         else:
             data_str = str(e)
-        
+
         data = json.loads(data_str)
-        path = data.get('path', '')
+        relative_path = data.get('path', '')
         content = data.get('content', '')
 
-        if not path:
+        if not relative_path:
             raise ValueError("Путь не передан")
 
-        path = str(resolve_project_path(path))
-        log(f"[save_file] Сохраняем: {path}")
-        with open(path, 'w', encoding='utf-8') as f:
+        absolute_path = str(resolve_project_path(relative_path))
+        log(f"[save_file] Сохраняем: {absolute_path}")
+        with open(absolute_path, 'w', encoding='utf-8') as f:
             f.write(content)
-            
+
         log(f"[save_file] Успешно сохранено")
-        resp = json.dumps({'status': 'ok', 'path': path})
+        # ВАЖНО: возвращаем relative_path
+        resp = json.dumps({'status': 'ok', 'path': relative_path})
         b64_str = base64.b64encode(resp.encode('utf-8')).decode('ascii')
-        
+
         if win and win.is_shown():
             win.run(f"onFileSaved('{b64_str}');")
     except Exception as ex:
@@ -346,6 +349,19 @@ def start_fastapi_server():
         "Не удалось запустить локальный сервер Java/терминала на 127.0.0.1:8086. "
         "Проверьте сообщения выше и повторите запуск."
     )
+
+def parse_java_highlight(e):
+    try:
+        b64_code = e.get_string() if hasattr(e, 'get_string') else str(e)
+        code = base64.b64decode(b64_code).decode('utf-8')
+        tokens = highlight_tokens(code)
+        payload = json.dumps({'code': code, 'tokens': tokens})
+        b64_str = base64.b64encode(payload.encode('utf-8')).decode('ascii')
+        if win and win.is_shown():
+            win.run(f"onJavaHighlightReady('{b64_str}');")
+    except Exception as ex:
+        log(f"[parse_java_highlight] Ошибка: {ex}")
+
 
 
 def main():

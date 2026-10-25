@@ -1,0 +1,8 @@
+INDEX VERSION 1.134+C:\Users\eliza\Downloads\ide\ide\.jdtls-data\.metadata\.plugins\org.eclipse.jdt.core
+1377681608.index
+3528632484.index
+1901440158.index
+3315018925.index
+3700170220.index
+2975887662.index
+1946211685.index

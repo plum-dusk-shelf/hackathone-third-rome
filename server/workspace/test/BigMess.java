@@ -144,15 +144,24 @@ public class BigMess {
 
     // ---------- рекурсия и алгоритмы ----------
 
-    static long factorial(int n) {
-        if (n <= 1) return 1;             // BREAK 5
-        return n * factorial(n - 1);
+static long factorial(int n) {
+    long result = 1;
+    for (int i = 2; i <= n; i++) {
+        result *= i;
     }
+    return result;
+}
 
-    static int fib(int n) {
-        if (n < 2) return n;              // BREAK 6
-        return fib(n - 1) + fib(n - 2);
+static int fib(int n) {
+    if (n < 2) return n;
+    int a = 0, b = 1;
+    for (int i = 2; i <= n; i++) {
+        int c = a + b;
+        a = b;
+        b = c;
     }
+    return b;
+}
 
     static void quickSort(int[] a, int lo, int hi) {
         if (lo >= hi) return;             // BREAK 7
@@ -183,15 +192,16 @@ public class BigMess {
 
     // ---------- вложенные циклы и сложность ----------
 
-    static int[][] makeMatrix(int n) {
-        int[][] m = new int[n][n];
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
-                m[i][j] = (i + 1) * (j + 1);   // BREAK 8
-            }
+static int[][] makeMatrix(int n) {
+    int[][] m = new int[n][n];
+    for (int i = 0; i < n; i++) {
+        int iPlus1 = i + 1;
+        for (int j = 0; j < n; j++) {
+            m[i][j] = iPlus1 * (j + 1);
         }
-        return m;
     }
+    return m;
+}
 
     static int sumMatrix(int[][] m) {
         int s = 0;

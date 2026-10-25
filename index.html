@@ -11,6 +11,8 @@
 
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 
+    <script src="syntax.js"></script>
+
     <style>
         :root {
             --bg-main: #0f0f0f;        
@@ -196,7 +198,7 @@
             cursor: grab;
             user-select: none;
             white-space: nowrap;
-            transition: background 0.2s;
+            transition: background 0.2s, opacity 0.2s;
         }
         .collapsed-tab:hover {
             background: var(--manti-dark);
@@ -213,6 +215,9 @@
         }
         .collapsed-tab.dragging {
             opacity: 0.5;
+        }
+        .collapsed-tab.dimmed {
+            opacity: 0.45;
         }
 
         #main-area {
@@ -299,6 +304,20 @@
             box-shadow: 0 0 10px rgba(245, 230, 211, 0.1);
         }
 
+        .panel.group-selected {
+            border-color: var(--manti-accent);
+            box-shadow: 0 0 12px rgba(212, 140, 74, 0.5);
+        }
+
+        .panel.group-storage {
+            border-color: var(--manti-accent);
+            box-shadow: 0 0 10px rgba(212, 140, 74, 0.3);
+        }
+
+        .panel.dimmed {
+            opacity: 0.4;
+        }
+
         .panel.panel-small {
             flex: 0.25 1 0%;
             min-width: 80px;
@@ -318,11 +337,24 @@
         .panel-title {
             display: flex;
             align-items: center;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .panel-title > span:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .panel-controls {
             display: flex;
             gap: 5px;
+            flex-shrink: 0;
+            margin-left: auto;
         }
 
         .panel-btn {
@@ -343,6 +375,11 @@
         }
 
         .panel.active-panel .panel-header {
+            background: #2a2a2a;
+            color: #fff;
+        }
+
+        .panel.group-selected .panel-header {
             background: #2a2a2a;
             color: #fff;
         }
@@ -453,24 +490,64 @@
             display: block;
         }
 
-        .editor-area {
+        /* Контейнер: подсветка + textarea */
+        .editor-stack {
+            position: relative;
             flex: 1;
             width: 100%;
             height: 100%;
-            background: var(--bg-main);
+            overflow: hidden;
+        }
+
+        .editor-highlight {
+            position: absolute;
+            inset: 0;
+            padding: 10px;
+            font-family: Consolas, 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 20px;
+            white-space: pre;
+            overflow: hidden;
+            pointer-events: none;
             color: var(--manti-dough);
+            background: var(--bg-main);
+            tab-size: 4;
+            z-index: 0;
+            margin: 0;
+            border: none;
+        }
+
+        .editor-area {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            color: transparent;
+            caret-color: var(--manti-dough);
             border: none;
             resize: none;
             padding: 10px;
-            font-family: 'Consolas', monospace;
+            font-family: Consolas, 'Courier New', monospace;
             font-size: 14px;
             line-height: 20px;
             outline: none;
             white-space: pre;
             overflow: auto;
             tab-size: 4;
+            z-index: 1;
+            margin: 0;
         }
         .editor-area::placeholder { color: var(--text-dim); }
+
+        .tok-string   { color: #a8d69a; }
+        .tok-comment  { color: #6b6b6b; font-style: italic; }
+        .tok-keyword  { color: var(--manti-brown); font-weight: 600; }
+        .tok-class    { color: var(--manti-accent); font-weight: 600; }
+        .tok-variable { color: #ecd9b8; }
+        .tok-number   { color: #e0b87a; }
+        .tok-annotation { color: #c58cd4; }
+        .tok-operator { color: #bbbbbb; }
 
         .term-container { width: 100%; height: 100%; padding: 6px; background: var(--terminal-bg); }
         .xterm { height: 100%; }
@@ -500,7 +577,6 @@
         #workspace.drag-over { background: rgba(212, 140, 74, 0.05); border: 2px dashed var(--manti-accent); }
         .panel.drag-over { border: 1px dashed var(--manti-accent); background: rgba(212, 140, 74, 0.1); }
 
-        /* Модальные окна */
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.7);
@@ -594,7 +670,6 @@
     <div id="variables-content">Переменные появятся при остановке отладчика.</div>
 </section>
 
-<!-- Модальное окно сохранения -->
 <div class="modal-overlay" id="save-modal">
     <div class="modal-window">
         <h3>Несохраненные изменения</h3>
@@ -611,7 +686,6 @@
     </div>
 </div>
 
-<!-- Модальное окно уведомлений и подтверждений -->
 <div class="modal-overlay" id="notify-modal">
     <div class="modal-window">
         <h3 id="notify-title">Уведомление</h3>
@@ -629,6 +703,8 @@
     // 1. Состояние и утилиты
     // ==========================================
     const editorStates = new WeakMap(); 
+    const graphStates = new WeakMap();
+
     let currentActiveEditor = null;
     let modalSelectedEditor = null;
     let editorCounter = 0; 
@@ -651,8 +727,76 @@
 
     let collapsedTabsData = []; 
     let pendingOptimize = false;
-    // Флаг: только что была оптимизация, не позволяем перезаписывать код
     let justOptimized = false;
+
+    // Для оптимизации графа без редактора:
+    // когда пользователь нажал «Оптимизировать» на графе, а редактора нет,
+    // мы читаем файл через read_file, и в onFileContentLoaded сразу парсим + оптимизируем.
+    // Чтобы отличить «оптимизационное» чтение от «открывающего», держим флаг на контейнере.
+    // Само содержимое файла запоминаем в gs.parsingCode.
+
+    const selectedGroup = new Set();
+
+    function isStorage(panel) {
+        return !!panel.querySelector('.file-tree');
+    }
+
+    function isContent(panel) {
+        return (
+            !!panel.querySelector('.editor-area') ||
+            !!panel.querySelector('.graph-container') ||
+            !!panel.querySelector('.term-container') ||
+            !!panel.querySelector('.complexity-container') ||
+            !!panel.querySelector('.console-container')
+        );
+    }
+
+    function updateHighlights() {
+        const allPanels = document.querySelectorAll('.panel');
+        const hasGroup = selectedGroup.size > 0;
+
+        allPanels.forEach(panel => {
+            panel.classList.remove('group-selected', 'group-storage', 'dimmed');
+
+            if (!hasGroup) return;
+
+            if (selectedGroup.has(panel)) {
+                if (isStorage(panel)) panel.classList.add('group-storage');
+                else panel.classList.add('group-selected');
+            } else {
+                panel.classList.add('dimmed');
+            }
+        });
+
+        document.querySelectorAll('.collapsed-tab').forEach(tabEl => {
+            const tabId = tabEl.dataset.tabId;
+            const tabData = collapsedTabsData.find(t => t.id === tabId);
+            if (!tabData) return;
+            tabEl.classList.toggle('dimmed', hasGroup);
+        });
+    }
+
+    function clearSelection() {
+        selectedGroup.clear();
+        updateHighlights();
+    }
+
+    function toggleGroupSelection(panel) {
+        if (selectedGroup.has(panel)) {
+            selectedGroup.delete(panel);
+            updateHighlights();
+            return;
+        }
+
+        if (isStorage(panel)) {
+            for (const p of Array.from(selectedGroup)) {
+                if (isStorage(p)) selectedGroup.delete(p);
+            }
+        }
+
+        selectedGroup.add(panel);
+        updateHighlights();
+    }
 
     let activePanel = null;
     function setActivePanel(panel) {
@@ -748,7 +892,6 @@
         return true;
     }
 
-    // Функция для добавления лога в консоль
     window.appendLog = function(text) {
         const existing = document.querySelectorAll('.console-container');
         if (!existing.length) ensureConsolePanel();
@@ -761,9 +904,6 @@
         });
     };
 
-    // ==========================================
-    // 2. Работа с модальным окном (сохранение)
-    // ==========================================
     const modalOverlay = document.getElementById('save-modal');
     const modalList = document.getElementById('modal-editor-list');
 
@@ -844,9 +984,6 @@
         }
     }
 
-    // ==========================================
-    // 3. Модальное окно уведомлений / подтверждений
-    // ==========================================
     const notifyOverlay = document.getElementById('notify-modal');
     const notifyTitle = document.getElementById('notify-title');
     const notifyMessage = document.getElementById('notify-message');
@@ -905,8 +1042,61 @@
     }
 
     // ==========================================
-    // 4. Callbacks из Python
+    // Explorer → клик по файлу
     // ==========================================
+    function openFileFromExplorer(filePath) {
+        let targets = Array.from(selectedGroup).filter(isContent);
+        if (targets.length === 0) {
+            targets = Array.from(document.querySelectorAll('.panel')).filter(isContent);
+        }
+
+        if (targets.length === 0) {
+            showInfo('Нет получателя', 'Перетащите на рабочую область хотя бы один редактор или граф.');
+            return;
+        }
+
+        const safePath = btoa(unescape(encodeURIComponent(filePath)));
+        let didSomething = false;
+
+        targets.forEach(panel => {
+            if (panel.querySelector('.editor-area')) {
+                const editor = panel.querySelector('.editor-area');
+                let state = editorStates.get(editor);
+                if (!state) {
+                    state = { editorId: '', editorTitle: '', path: null, originalContent: '', dirty: false, pendingPath: null };
+                    editorStates.set(editor, state);
+                }
+                state.pendingPath = filePath;
+                if (typeof webui !== 'undefined' && webui.read_file) {
+                    webui.read_file(safePath);
+                }
+                didSomething = true;
+            }
+
+            if (panel.querySelector('.graph-container')) {
+                const container = panel.querySelector('.graph-container');
+                if (!graphStates.has(container)) graphStates.set(container, {});
+                const gs = graphStates.get(container);
+                gs.pendingPath = filePath;
+                // Если у графа уже был открыт файл (есть parsingCode), но пользователь
+                // кликнул другой файл — сбрасываем parsingCode, чтобы не путать.
+                if (gs.parsingPath && gs.parsingPath !== filePath) {
+                    gs.parsingCode = null;
+                    gs.parsingPath = null;
+                }
+                graphStates.set(container, gs);
+                if (typeof webui !== 'undefined' && webui.read_file) {
+                    webui.read_file(safePath);
+                }
+                didSomething = true;
+            }
+        });
+
+        if (!didSomething) {
+            showInfo('Нет получателя', 'Выделите хотя бы один редактор или граф.');
+        }
+    }
+
     window.onFilesLoaded = function(b64Str) {
         const trees = document.querySelectorAll('.file-tree');
         try {
@@ -958,10 +1148,7 @@
                                 arrow.style.opacity = '0.3';
                             }
                         } else {
-                            itemDiv.addEventListener('click', () => {
-                                const safePath = btoa(unescape(encodeURIComponent(child.path)));
-                                if (typeof webui !== 'undefined') webui.read_file(safePath);
-                            });
+                            itemDiv.addEventListener('click', () => openFileFromExplorer(child.path));
                         }
                     });
                 };
@@ -976,25 +1163,22 @@
             const data = JSON.parse(decodeBase64(b64Str));
             if (data.error) { console.error(data.error); return; }
 
-            // Если только что была оптимизация — не перезаписываем код
             if (justOptimized) {
                 justOptimized = false;
                 return;
             }
 
+            // 1. Обновляем редакторы
             document.querySelectorAll('.editor-area').forEach(editor => {
+                const state = editorStates.get(editor);
+                if (!state) return;
+                if (state.pendingPath !== data.path) return;
+
                 editor.value = data.content;
-                
-                let state = editorStates.get(editor);
-                if (!state) {
-                    state = { editorId: '', editorTitle: '' };
-                }
-                
                 state.path = data.path;
                 state.originalContent = data.content;
                 state.dirty = false;
-                
-                editorStates.set(editor, state);
+                state.pendingPath = null;
 
                 const panel = editor.closest('.panel');
                 if (panel) {
@@ -1012,13 +1196,47 @@
                     const gutter = wrapper.querySelector('.editor-gutter');
                     if (gutter) updateGutter(editor, gutter);
                 }
+
+                if (window.JavaHighlight) {
+                    window.JavaHighlight.renderHighlight(editor);
+                }
+
+                editor.focus();
+                if (panel) setActivePanel(panel);
+                selectedEditor = editor;
+            });
+
+            // 2. Графы, которые ждут файл
+            document.querySelectorAll('.graph-container').forEach(container => {
+                const gs = graphStates.get(container) || {};
+                if (gs.pendingPath !== data.path) return;
+
+                // Сохраняем содержимое и путь
+                gs.parsingCode = data.content;
+                gs.parsingPath = data.path;
+                gs.pendingPath = null;
+
+                // Если этот граф ждал файл для ОПТИМИЗАЦИИ (без редактора) — 
+                // сразу запускаем parse_java → onGraphLoaded сделает optimize_graph
+                if (gs.optimizeAfterRead) {
+                    gs.optimizeAfterRead = false;
+                    graphStates.set(container, gs);
+                    if (typeof webui !== 'undefined' && webui.parse_java) {
+                        const b64Code = btoa(unescape(encodeURIComponent(data.content)));
+                        webui.parse_java(b64Code);
+                    }
+                    return;
+                }
+
+                // Обычное построение графа из файла
+                graphStates.set(container, gs);
+                if (typeof webui !== 'undefined' && webui.parse_java) {
+                    const b64Code = btoa(unescape(encodeURIComponent(data.content)));
+                    webui.parse_java(b64Code);
+                }
             });
 
             refreshAllComplexityPanels();
-            if (document.querySelector('.graph-container')) {
-                requestGraphForCurrentEditor(false);
-            }
-
         } catch(e) { console.error(e); }
     };
 
@@ -1030,6 +1248,47 @@
         }
         const editors = document.querySelectorAll('.editor-area');
         return editors.length ? editors[editors.length - 1] : null;
+    }
+
+    function collectJavaEditors() {
+        const result = [];
+        document.querySelectorAll('.editor-area').forEach(editor => {
+            const state = editorStates.get(editor);
+            if (state && state.path && state.path.toLowerCase().endsWith('.java')) {
+                result.push(editor);
+            }
+        });
+        return result;
+    }
+
+    function pickEditorForRun() {
+        if (selectedGroup.size > 0) {
+            for (const panel of selectedGroup) {
+                const editor = panel.querySelector('.editor-area');
+                if (!editor) continue;
+                const state = editorStates.get(editor);
+                if (state && state.path && state.path.toLowerCase().endsWith('.java')) {
+                    return editor;
+                }
+            }
+        }
+        if (selectedEditor && selectedEditor.isConnected) {
+            const state = editorStates.get(selectedEditor);
+            if (state && state.path && state.path.toLowerCase().endsWith('.java')) {
+                return selectedEditor;
+            }
+        }
+        if (activePanel) {
+            const editor = activePanel.querySelector('.editor-area');
+            if (editor) {
+                const state = editorStates.get(editor);
+                if (state && state.path && state.path.toLowerCase().endsWith('.java')) {
+                    return editor;
+                }
+            }
+        }
+        const javaEditors = collectJavaEditors();
+        return javaEditors.length > 0 ? javaEditors[0] : null;
     }
 
     function showDebugControls(visible) {
@@ -1330,11 +1589,10 @@
     }
 
     async function startJava(mode) {
-        ensureConsolePanel();
-        const editor = getSelectedEditor();
+        const editor = pickEditorForRun();
         const state = editor && editorStates.get(editor);
         if (!editor || !state || !state.path) {
-            showInfo('Нет Java-файла', 'Откройте .java-файл в редакторе перед запуском.');
+            showInfo('Нет Java-файла', 'Откройте .java-файл в редакторе или выделите редактор с .java-файлом в фокусе.');
             return;
         }
         if (!state.path.toLowerCase().endsWith('.java')) {
@@ -1424,52 +1682,44 @@
         } catch(e) { console.error(e); }
     };
 
-    function requestGraphForCurrentEditor(showMessages = true) {
-        const editors = document.querySelectorAll('.editor-area');
-        if (editors.length === 0) {
-            if (showMessages) {
-                showInfo('Нет редакторов', 'Откройте файл в панели Explorer, чтобы построить граф.');
-            }
-            return false;
-        }
-
-        const code = editors[editors.length - 1].value;
-        if (!code.trim()) {
-            if (showMessages) {
-                showInfo('Редактор пуст', 'Откройте файл или добавьте Java-код в редактор.');
-            }
-            return false;
-        }
-
-        if (typeof webui === 'undefined' || !webui.parse_java) {
-            if (showMessages) {
-                showInfo('WebUI недоступен', 'Не удалось связаться с обработчиком парсинга Java.');
-            }
-            return false;
-        }
-
-        const b64Code = btoa(unescape(encodeURIComponent(code)));
-        webui.parse_java(b64Code);
-        return true;
-    }
-
+    // ==========================================
+    // onGraphLoaded — рисует граф и запускает оптимизацию,
+    // если она была запрошена
+    // ==========================================
     window.onGraphLoaded = function(b64Str) {
         try {
             const data = JSON.parse(decodeBase64(b64Str));
+
+            // 1. Рисуем граф в контейнерах, которые его ждут
             document.querySelectorAll('.graph-container').forEach(container => {
+                const gs = graphStates.get(container) || {};
+                // Рисуем, если граф ждал файл (parsingPath не пуст) 
+                // или если у него нет pendingPath (т.е. это не "чужой" запрос)
+                if (!gs.parsingPath && !gs.pendingPath) return;
+
                 container.innerHTML = '';
                 if (data.error) {
                     const error = document.createElement('div');
                     error.style.cssText = 'color:red; padding:10px;';
                     error.textContent = data.error;
                     container.appendChild(error);
+                    gs.pendingPath = null;
+                    gs.parsingCode = null;
+                    gs.parsingPath = null;
+                    gs.optimizeAfterRead = false;
+                    graphStates.set(container, gs);
                     return;
                 }
                 if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
                     container.textContent = 'Парсер вернул некорректный граф.';
+                    gs.pendingPath = null;
+                    gs.parsingCode = null;
+                    gs.parsingPath = null;
+                    gs.optimizeAfterRead = false;
+                    graphStates.set(container, gs);
                     return;
                 }
-                
+
                 new vis.Network(container, {
                     nodes: new vis.DataSet(data.nodes),
                     edges: new vis.DataSet(data.edges)
@@ -1478,20 +1728,47 @@
                     edges: { color: '#777777', smooth: true },
                     physics: { enabled: true }
                 });
+
+                gs.pendingPath = null;
+                graphStates.set(container, gs);
             });
 
+            // 2. Оптимизация: если pendingOptimize, берём код из графа/редактора
             if (pendingOptimize) {
                 pendingOptimize = false;
                 if (data.error || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
                     return;
                 }
-                const editors = document.querySelectorAll('.editor-area');
-                if (editors.length === 0) {
-                    showInfo('Нет редакторов', 'Откройте файл в панели Explorer, чтобы использовать эту функцию.');
+
+                // Ищем код для оптимизации:
+                // 1) из графа с непустым parsingCode (только что распарсили)
+                // 2) из редактора (fallback)
+                let code = '';
+                let graphForOptimize = data;
+
+                document.querySelectorAll('.graph-container').forEach(container => {
+                    const gs = graphStates.get(container) || {};
+                    if (gs.parsingCode) {
+                        code = gs.parsingCode;
+                    }
+                });
+
+                if (!code) {
+                    const editors = document.querySelectorAll('.editor-area');
+                    if (editors.length > 0) {
+                        code = editors[editors.length - 1].value;
+                    }
+                }
+
+                if (!code.trim()) {
+                    showInfo(
+                        'Нет кода для оптимизации',
+                        'Откройте .java-файл через Explorer (клик по файлу откроет его в графе) или в редакторе.'
+                    );
                     return;
                 }
-                const code = editors[editors.length - 1].value;
-                const payload = JSON.stringify({ code: code, graph: data });
+
+                const payload = JSON.stringify({ code: code, graph: graphForOptimize });
                 const b64 = btoa(unescape(encodeURIComponent(payload)));
                 if (typeof webui !== 'undefined' && webui.optimize_graph) {
                     webui.optimize_graph(b64);
@@ -1529,10 +1806,9 @@
                 return;
             }
 
-            // Включаем флаг, чтобы read_file не перезаписал новый код
             justOptimized = true;
 
-            // 1. Обновляем код в редакторе и сохраняем его в исходный файл
+            // Обновляем редакторы, если они есть
             document.querySelectorAll('.editor-area').forEach(editor => {
                 const state = editorStates.get(editor);
                 if (state && state.path) {
@@ -1551,7 +1827,10 @@
                         if (gutter) updateGutter(editor, gutter);
                     }
 
-                    // Сохраняем оптимизированный код в ИСХОДНЫЙ файл
+                    if (window.JavaHighlight) {
+                        window.JavaHighlight.renderHighlight(editor);
+                    }
+
                     const payload = JSON.stringify({
                         path: state.path,
                         content: data.new_code
@@ -1562,7 +1841,7 @@
                 }
             });
 
-            // 2. Перерисовываем граф
+            // Обновляем графы
             document.querySelectorAll('.graph-container').forEach(container => {
                 container.innerHTML = '';
                 if (data.optimized_graph && data.optimized_graph.nodes) {
@@ -1574,10 +1853,13 @@
                         edges: { color: '#777777', smooth: true },
                         physics: { enabled: true }
                     });
+                    // Обновляем parsingCode, чтобы следующий клик «Оптимизировать» знал актуальный код
+                    const gs = graphStates.get(container) || {};
+                    gs.parsingCode = data.new_code;
+                    graphStates.set(container, gs);
                 }
             });
 
-            // 3. Показываем модальное окно с отчётом
             const changed = data.changed_methods || [];
             if (changed.length > 0) {
                 showNotifyModal(
@@ -1587,9 +1869,7 @@
                         details: changed,
                         confirmText: 'Принять',
                         cancelText: 'Отмена',
-                        onConfirm: () => {
-                            // Всё уже применено и сохранено
-                        }
+                        onConfirm: () => {}
                     }
                 );
             } else {
@@ -1617,9 +1897,6 @@
         }
     }
 
-    // ==========================================
-    // 5. Сворачивание Sidebar
-    // ==========================================
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('toggle-sidebar-btn');
     const expandBtn = document.getElementById('expand-sidebar-btn');
@@ -1634,9 +1911,6 @@
         expandBtn.style.display = 'none';
     });
 
-    // ==========================================
-    // 6. Drag & Drop из Sidebar
-    // ==========================================
     document.querySelectorAll('.sidebar-item').forEach(item => {
         item.addEventListener('click', () => {
             addPanelToWorkspace(item.dataset.type);
@@ -1691,9 +1965,6 @@
         row.appendChild(createPanelElement(type));
     }
 
-    // ==========================================
-    // 7. Логика сворачивания и закрытия
-    // ==========================================
     const collapsedTabsContainer = document.getElementById('collapsed-tabs');
 
     function collapsePanel(panel) {
@@ -1763,7 +2034,10 @@
         });
 
         collapsedTabsContainer.appendChild(tabEl);
+
+        selectedGroup.delete(panel);
         panel.remove();
+        updateHighlights();
         cleanupEmptyRows();
     }
 
@@ -1808,6 +2082,7 @@
         collapsedTabsData.splice(tabIndex, 1);
         const tabEl = collapsedTabsContainer.querySelector(`[data-tab-id="${tabId}"]`);
         if (tabEl) tabEl.remove();
+        updateHighlights();
     }
 
     function removeCollapsedTab(tabId, askForSave) {
@@ -1861,7 +2136,9 @@
         })();
 
         const doClose = () => {
+            selectedGroup.delete(panel);
             panel.remove();
+            updateHighlights();
             cleanupEmptyRows();
         };
 
@@ -1906,7 +2183,7 @@
     }
 
     // ==========================================
-    // 8. Создание панели
+    // Создание панели
     // ==========================================
     function createPanelElement(type) {
         const panel = document.createElement('div');
@@ -1976,11 +2253,41 @@
         panel.appendChild(resizerH);
         panel.appendChild(resizerV);
 
-        panel.addEventListener('mousedown', () => {
+        panel.addEventListener('mousedown', (e) => {
             setActivePanel(panel);
+
+            if (e.target.closest('.panel-controls')) return;
+            if (e.target.closest('button')) return;
+            if (e.target.closest('a')) return;
+            if (e.target.closest('input')) return;
+            if (e.target.closest('textarea')) return;
+            if (e.button !== 0) return;
+
+            if (isStorage(panel)) {
+                if (selectedGroup.size > 0) {
+                    for (const p of Array.from(selectedGroup)) {
+                        if (isStorage(p)) selectedGroup.delete(p);
+                    }
+                    selectedGroup.add(panel);
+                    updateHighlights();
+                } else {
+                    selectedGroup.clear();
+                    selectedGroup.add(panel);
+                    updateHighlights();
+                }
+                return;
+            }
+
+            if (e.shiftKey) {
+                toggleGroupSelection(panel);
+                e.preventDefault();
+            } else {
+                selectedGroup.clear();
+                selectedGroup.add(panel);
+                updateHighlights();
+            }
         });
 
-        // === Наполнение ===
         if (type === 'explorer') {
             headerTitle.textContent = 'Explorer';
             content.innerHTML = '<div class="file-tree">Загрузка файлов...</div>';
@@ -1995,14 +2302,25 @@
             
             const gutter = document.createElement('div');
             gutter.className = 'editor-gutter';
-            
+
+            const editorStack = document.createElement('div');
+            editorStack.className = 'editor-stack';
+
+            const highlight = document.createElement('pre');
+            highlight.className = 'editor-highlight';
+            highlight.setAttribute('aria-hidden', 'true');
+
             const textarea = document.createElement('textarea');
             textarea.className = 'editor-area';
             textarea.placeholder = 'Выберите файл в Explorer...';
             textarea.spellcheck = false;
+            textarea.wrap = 'off';
+
+            editorStack.appendChild(highlight);
+            editorStack.appendChild(textarea);
 
             wrapper.appendChild(gutter);
-            wrapper.appendChild(textarea);
+            wrapper.appendChild(editorStack);
             content.appendChild(wrapper);
 
             updateGutter(textarea, gutter);
@@ -2012,7 +2330,8 @@
                 originalContent: '', 
                 dirty: false,
                 editorId: editorCounter,
-                editorTitle: editorTitle
+                editorTitle: editorTitle,
+                pendingPath: null
             });
 
             textarea.addEventListener('scroll', () => {
@@ -2082,6 +2401,10 @@
                 }
             });
 
+            if (window.JavaHighlight) {
+                window.JavaHighlight.attachHighlight(textarea);
+            }
+
         } else if (type === 'terminal') {
             termCounter++;
             const id = 'term-' + termCounter;
@@ -2149,38 +2472,55 @@
         } else if (type === 'graph') {
             headerTitle.textContent = 'Граф';
             content.innerHTML = '<div class="graph-container"></div>';
-            
-            const parseBtn = document.createElement('button');
-            parseBtn.textContent = 'Из кода';
-            parseBtn.style.cssText = 'margin-left:10px; padding:2px 6px; font-size:10px; cursor:pointer; background:transparent; border:1px solid var(--manti-accent); color:var(--manti-accent); border-radius:4px;';
-            parseBtn.onclick = () => requestGraphForCurrentEditor();
-            header.appendChild(parseBtn);
+            const container = content.querySelector('.graph-container');
+            graphStates.set(container, { pendingPath: null, parsingCode: null, parsingPath: null, optimizeAfterRead: false });
 
+            // Кнопка «Оптимизировать»
             const optimizeBtn = document.createElement('button');
             optimizeBtn.textContent = 'Оптимизировать';
-            optimizeBtn.style.cssText = 'margin-left:6px; padding:2px 6px; font-size:10px; cursor:pointer; background:transparent; border:1px solid #90ee90; color:#90ee90; border-radius:4px;';
+            optimizeBtn.style.cssText = 'margin-left:10px; padding:2px 6px; font-size:10px; cursor:pointer; background:transparent; border:1px solid #90ee90; color:#90ee90; border-radius:4px;';
             optimizeBtn.onclick = () => {
-                const editors = document.querySelectorAll('.editor-area');
-                if (editors.length === 0) {
-                    showInfo('Нет редакторов', 'Откройте файл в панели Explorer, чтобы использовать эту функцию.');
-                    return;
-                }
-                const code = editors[editors.length - 1].value;
-                if (!code.trim()) {
-                    showInfo('Редактор пуст', 'В редакторе нет кода. Откройте файл или напишите код.');
+                const gs = graphStates.get(container) || {};
+
+                // 1. Если у графа уже есть открытый файл (parsingCode) — оптимизируем сразу.
+                //    Парсить снова не нужно — граф уже построен.
+                if (gs.parsingCode && gs.parsingCode.trim()) {
+                    // Отправляем граф и код в optimize_graph
+                    // Для этого нужен graph data — а у нас его нет напрямую.
+                    // Возвращаемся к схеме: parse_java → onGraphLoaded → optimize_graph.
+                    // Но чтобы onGraphLoaded знал, что это оптимизация — ставим pendingOptimize.
+                    pendingOptimize = true;
+                    if (typeof webui !== 'undefined' && webui.parse_java) {
+                        const b64Code = btoa(unescape(encodeURIComponent(gs.parsingCode)));
+                        webui.parse_java(b64Code);
+                    }
                     return;
                 }
 
-                pendingOptimize = true;
-                if (!requestGraphForCurrentEditor()) pendingOptimize = false;
+                // 2. Если есть редактор — берём код из него (старое поведение).
+                const editors = document.querySelectorAll('.editor-area');
+                if (editors.length > 0) {
+                    const code = editors[editors.length - 1].value;
+                    if (!code.trim()) {
+                        showInfo('Редактор пуст', 'В редакторе нет кода. Откройте файл или напишите код.');
+                        return;
+                    }
+                    pendingOptimize = true;
+                    if (typeof webui !== 'undefined' && webui.parse_java) {
+                        const b64Code = btoa(unescape(encodeURIComponent(code)));
+                        webui.parse_java(b64Code);
+                    }
+                    return;
+                }
+
+                // 3. Иначе — нет ни файла в графе, ни редактора.
+                showInfo(
+                    'Граф не построен',
+                    'Сначала откройте .java-файл через Explorer (клик по файлу построит граф), затем оптимизируйте.'
+                );
             };
             header.appendChild(optimizeBtn);
 
-            if (!requestGraphForCurrentEditor(false)) {
-                content.querySelector('.graph-container').textContent =
-                    'Откройте Java-файл в редакторе и нажмите «Из кода».';
-            }
-            
         } else if (type === 'complexity') {
             headerTitle.textContent = 'Сложность';
             content.innerHTML = '<div class="complexity-container">Ожидание анализа...</div>';
@@ -2225,9 +2565,6 @@
             content.innerHTML = '<div class="console-container"></div>';
         }
 
-        // ==========================================
-        // DRAG & DROP С СОХРАНЕНИЕМ РАЗМЕРОВ
-        // ==========================================
         header.addEventListener('dragstart', (e) => {
             dragSrcPanel = panel;
             dragSrcStyles = {
@@ -2285,6 +2622,11 @@
             height: panelB.style.height,
             flex: panelB.style.flex
         };
+
+        const rowA = panelA.closest('.row');
+        const rowB = panelB.closest('.row');
+        if (rowA) { rowA.style.flex = ''; rowA.style.height = ''; }
+        if (rowB) { rowB.style.flex = ''; rowB.style.height = ''; }
 
         if (parentA === parentB) {
             const marker = document.createElement('span');
@@ -2382,6 +2724,13 @@
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         });
+
+        resizer.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            panel.style.flex = '';
+            panel.style.width = '';
+        });
     }
 
     function makeResizableV(panel, resizer) {
@@ -2390,11 +2739,19 @@
             resizer.classList.add('active');
             const startY = e.clientY;
             const startHeight = panel.offsetHeight;
+            const row = panel.closest('.row');
 
             const onMouseMove = (ev) => {
                 const dy = ev.clientY - startY;
+                const newHeight = Math.max(100, startHeight + dy);
+                
                 panel.style.flex = 'none';
-                panel.style.height = Math.max(100, startHeight + dy) + 'px';
+                panel.style.height = newHeight + 'px';
+
+                if (row) {
+                    row.style.flex = 'none';
+                    row.style.height = newHeight + 'px';
+                }
             };
 
             const onMouseUp = () => {
@@ -2406,6 +2763,18 @@
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         });
+
+        resizer.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const row = panel.closest('.row');
+            panel.style.flex = '';
+            panel.style.height = '';
+            if (row) {
+                row.style.flex = '';
+                row.style.height = '';
+            }
+        });
     }
 
     function startRun() {
@@ -2415,6 +2784,21 @@
     function startDebug() {
         startJava('debug');
     }
+
+    document.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('.panel')) {
+            e.preventDefault();
+            clearSelection();
+        }
+    });
+
+    document.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.modal-window')) return;
+        if (e.button === 2 && !e.target.closest('.panel')) {
+            e.preventDefault();
+            clearSelection();
+        }
+    });
 </script>
 
 </body>
